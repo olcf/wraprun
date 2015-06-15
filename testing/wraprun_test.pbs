@@ -1,0 +1,18 @@
+#!/bin/bash -l
+#PBS -A stf007
+#PBS -q batch
+#PBS -l walltime=01:00:00
+#PBS -N wraprun_test
+#PBS -o wraprun_test.log
+#PBS -j oe
+
+
+echo 'Wraprun test.'
+
+PATH=/ccs/home/belhorn/development/wraprun/bin:$PATH
+run_dir=$PROJWORK/stf007/belhorn/wraprun
+cd $run_dir
+
+wraprun -n 16 -N 16 ./a.out : \
+        -n 16 -N 16 ./a.out : \
+        -n 16 -N 16 ./a.out

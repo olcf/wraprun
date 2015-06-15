@@ -1,0 +1,4 @@
+#!/bin/bash
+
+echo "wraprun [INFO]: Launching aprun in wrapped environment"
+eval $(wraprun-env $*)

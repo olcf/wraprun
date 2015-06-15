@@ -1,0 +1,134 @@
+#!/usr/bin/env python
+
+'''
+This module provides functions for setting the environment needed to run A.
+Simpson's MPI wrapper for calling independent MPI programs in apruns MPMD mode.
+
+The main function expects an aprun MPMD mode argument string. See the aprun man
+page for details.
+
+The rank IDs of the MPI processing elements (PEs) for each independent MPI
+exectuable in the aprun call (which share a common MPI_world_comm) are
+extracted, grouped, and formed into environment variable strings compatible with
+the MPI wrapper.
+
+For a program running on N PEs, each PE with MPI_World_comm rank RID is granted
+an environment variable containing all the associated rank IDs (RID_X) in the
+same group.  The environemnt variables take the form
+
+  WRAPRUN_${RID}="$RID_1 RID_2 ... RID_N"
+
+The function then constructs a string that sets the rank group and MDI wrapper
+LD_PRELOAD environment variables and appends the aprun call. The string is
+printed to STDOUT which can be evaluated by a calling shell in order to preserve
+shell redirection and backgrounding in PBS submission scripts.  '''
+
+from __future__ import print_function
+import os
+
+
+VERBOSE=False
+
+def echo(string):
+    '''Print string wrapped in echo so recieving shell doesn't attempt to
+    execute the contents.
+    '''
+    print('''echo "{0}";'''.format(string))
+
+
+def log(lvl, msg):
+    '''Print log message at given level.'''
+    log_string = 'wraprun [{lvl}]: {msg}'
+    if VERBOSE or lvl in ['WARNING', 'ERROR']:
+        echo(log_string.format(lvl=lvl, msg=msg)
+
+
+# Get the PRELOAD lib from the environment else use an alternate version.
+if 'WRAPRUN_PRELOAD' not in os.environ.keys():
+    log('WARNING', '$WRAPRUN_PRELOAD not set. '
+        'Using alternate MPI wrapper.')
+LIB_PATH=os.environ.pop('WRAPRUN_PRELOAD',
+        '/lustre/atlas/proj-shared/stf007/libsplit.so')
+
+GROUP_VAR_FORMAT='WRAPRUN_{rank}'
+
+
+def parser():
+    '''
+    Parse CLI arguments for wraprun specific options and aprun specific
+    arguments.
+    '''
+    import argparse
+    self = argparse.ArgumentParser(
+            description='Generates shell-evaluatable string to set '
+            'the wraprun environment.')
+    self.add_argument('--w-debug', dest='debug', action='store_true',
+            help='Show debugging information.')
+    local_args, aprun_args = self.parse_known_args()
+    return local_args, aprun_args
+
+
+def get_independent_argstrings(aprun_arg_string):
+    '''Return a list of each independent program's argument list.'''
+    return [i.split() for i in ' '.join(aprun_arg_string).split(':')]
+
+
+def extract_group_ids(independent_args):
+    '''Return a list of group rank ID lists extracted from aprun arguments.'''
+    total_pes = 0
+    groups = []
+    for args in independent_args:
+        pes_index = args.index('-n') + 1
+        pes = int(args[pes_index])
+        current_pes = int(total_pes)
+        total_pes+=pes
+        groups.append([i for i in range(current_pes, total_pes)])
+    return groups
+
+
+def construct_group_variables(rank_groups):
+    '''Return a dictionary of environment variables for each rank containing the
+    associated ranks of all PEs in the group.
+    '''
+    env = {}
+    for group in rank_groups:
+        group_string = ' '.join((str(i) for i in group))
+        for rank in group:
+            var_name = GROUP_VAR_FORMAT.format(rank=rank)
+            env[var_name] = group_string
+    return env
+
+
+def print_output(env, aprun_args):
+    '''Print the output to STDOUT for a shell to interpret.'''
+    aprun_call = 'aprun ' + ' '.join(aprun_args)
+    for key in sorted(env.keys()):
+        print('{key}="{env}"'.format(key=key,env=env[key]))
+    print('LD_PRELOAD={lib} '.format(lib=LIB_PATH) +
+            aprun_call)
+
+
+def main():
+    '''Perform the sequence of steps needed to print the environment shell
+    commands.
+    '''
+
+    local_args, aprun_args = parser()
+    VERBOSE=local_args.debug
+    log('INFO', 'Launching aprun in wrapped environment')
+    mpmd_commands = get_independent_argstrings(aprun_args)
+    groups = extract_group_ids(mpmd_commands)
+    group_vars = construct_group_variables(groups)
+    print_output(group_vars, aprun_args)
+
+
+#===============================================================================
+if __name__ == '__main__':
+    import sys
+    try:
+        main()
+    except Exception as e:
+        log('ERROR', 'Caught a python exception:')
+        log('ERROR', str(e))
+        sys.exit(1)
+
