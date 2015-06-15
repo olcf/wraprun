@@ -9,5 +9,3 @@ file(GLOB SRC_FILES src/*.c src/*.cc)
 
 add_library(split SHARED ${SRC_FILES})
 set_target_properties(split PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
-
-install(TARGETS split DESTINATION ${CMAKE_CURRENT_SOURCE_DIR}/lib)

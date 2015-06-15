@@ -13,7 +13,7 @@ static void SetLocalRanks(const int rank, int *local_ranks, int *local_size)
 {
   // construct environment variable BAPRUN_${RANK}
   char ranks_var[64];
-  sprintf(ranks_var, "BAPRUN_%d", rank);
+  sprintf(ranks_var, "WRAPRUN_%d", rank);
 
   // Read integer ranks from environment variable to local_ranks
   char *char_ranks = getenv(ranks_var);

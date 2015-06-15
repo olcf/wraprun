@@ -13,11 +13,6 @@ $ make
 $ make install
 ```
 
-## To run C:
-* copy lib/libsplit.so to lustre
-* LD_PRELOAD=/path/to/libsplit.so aprun as normal
-
-## To run Fortran:
-* copy lib/libsplit.so to lustre
-* prepend LD_PRELOAD env variable to point to libfmpich*.so followed by libsplit.so to aprun
-* e.g. "/opt/cray/mpt/7.0.4/gni/mpich2-pgi/141/lib/libfmpich_pgi.so:/lustre/atlas/scratch/atj/stf007/libsplit.so"
+## To run:
+* module load wraprun
+* wraprun -n 80 ./a.out : -n 160 ./b.out ...
