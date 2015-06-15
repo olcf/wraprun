@@ -40,12 +40,12 @@ def log(lvl, msg):
     '''Print log message at given level.'''
     log_string = 'wraprun [{lvl}]: {msg}'
     if VERBOSE or lvl in ['WARNING', 'ERROR']:
-        echo(log_string.format(lvl=lvl, msg=msg)
+        echo(log_string.format(lvl=lvl, msg=msg))
 
 
 # Get the PRELOAD lib from the environment else use an alternate version.
 if 'WRAPRUN_PRELOAD' not in os.environ.keys():
-    log('WARNING', '$WRAPRUN_PRELOAD not set. '
+    log('WARNING', 'Environment variable WRAPRUN_PRELOAD not set. '
         'Using alternate MPI wrapper.')
 LIB_PATH=os.environ.pop('WRAPRUN_PRELOAD',
         '/lustre/atlas/proj-shared/stf007/libsplit.so')
