@@ -1,3 +1,6 @@
 #!/bin/bash
 
+# Execute the output of wraprun-env in a shell so as to preserve redirection in
+# parent scripts.
+
 eval $(wraprun-env $*)
