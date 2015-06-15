@@ -55,7 +55,7 @@ class WraprunFormula < Formula
     set PREFIX <%= @package.prefix %>
     <% end %>
 
-    set LUSTREPREFIX /lustre/atlas/sw/xk7/<%= @package.name %>/<%= @package.version %>/<%= @package.build_name %>
+    set LUSTREPREFIX /lustre/atlas/sw/xk7/$BUILD
 
     prepend-path PATH             $PREFIX/bin
     prepend-path LD_LIBRARY_PATH  $PREFIX/lib
