@@ -61,7 +61,10 @@ class WraprunFormula < Formula
     prepend-path PATH             $LUSTREPREFIX/bin
     prepend-path LD_LIBRARY_PATH  $LUSTREPREFIX/lib
 
-    set CAPRUN_PRELOAD $LUSTREPREFIX/lib/libsplit.so
-    set FAPRUN_PRELOAD $MPICH_DIR/lib/libfmpich.so:$LUSTREPREFIX/lib/libsplit.so
+    # The libfmpich library is suffixed with the PE name, so we must extract it
+    set compiler $env(PE_ENV)
+    set compiler [string tolower $compiler]
+
+    setenv WRAPRUN_PRELOAD $MPICH_DIR/lib/libfmpich_$compiler.so:$LUSTREPREFIX/lib/libsplit.so
   MODULEFILE
 end
