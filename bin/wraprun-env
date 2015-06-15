@@ -14,7 +14,7 @@ the MPI wrapper.
 
 For a program running on N PEs, each PE with MPI_COM_WORLD rank RID is granted
 an environment variable containing all the associated rank IDs (RID_X) in the
-same group.  The environemnt variables take the form
+same group.  The environment variables take the form
 
   WRAPRUN_${RID}="$RID_1 RID_2 ... RID_N"
 

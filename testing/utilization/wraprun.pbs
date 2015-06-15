@@ -1,0 +1,44 @@
+#!/bin/bash -l
+#PBS -A stf007
+#PBS -q batch
+#PBS -l walltime=01:00:00
+#PBS -N wraprun_util_test
+#PBS -o util_wraprun.pbs.log
+#PBS -j oe
+
+echo 'Testing resources used by wraprun MPMD calls.'
+
+module swap PrgEnv-pgi PrgEnv-gnu
+module load wraprun
+
+RUNDIR=$PROJWORK/stf007/belhorn/wraprun/
+cd $RUNDIR
+
+PROG=$RUNDIR/a.out
+
+cmd="wraprun --w-debug "
+arg="-n 16 -N 16 $PROG"
+sep=" : "
+for i in `seq 1 $(($PBS_NUM_NODES-1))`; do
+  cmd+=$arg
+  cmd+=$sep
+done
+cmd+=$arg
+
+eval $cmd &
+
+sleep 5
+
+PSLOG=$RUNDIR/util_wraprun.$PBS_JOBID.log
+SLEEPTIME=10
+echo "Aprun memory usage log. (Sampled every $SLEEPTIME seconds)" >> $PSLOG
+echo 'SIZE  RSS' >> $PSLOG
+while jobs %%; do
+  PROCS=`ps -U $USER -o comm,pid,c,size,rss | grep -e '^\(COMMAND\|aprun\)'`
+  echo "$PROCS" | grep -e '^aprun\s' |  awk '{size += $4; rss += $5} END {print size, rss}' >> $PSLOG
+  sleep $SLEEPTIME
+done
+
+wait
+
+mv $PSLOG $PBS_O_WORKDIR/util_wraprun.log
