@@ -1,5 +1,5 @@
-# AprunSplit
-AprunSplit is a library that intercepts MPI calls and will switch out MPI_COMM_WORLD for a smaller communicator
+# wraprun
+wraprun is a library that intercepts MPI function calls and will switch out MPI_COMM_WORLD for a communicator
 containing a subset of MPI_COMM_WORLD ranks.
 
 
