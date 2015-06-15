@@ -1,7 +1,7 @@
 #!/bin/bash -l
 #PBS -A stf007
 #PBS -q batch
-#PBS -l walltime=01:00:00
+#PBS -l walltime=01:00:00,nodes=3
 #PBS -N wraprun_test
 #PBS -o wraprun_test.log
 #PBS -j oe
