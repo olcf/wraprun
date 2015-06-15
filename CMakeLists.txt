@@ -10,6 +10,11 @@ file(GLOB SRC_FILES src/*.c src/*.cc)
 add_library(split SHARED ${SRC_FILES})
 set_target_properties(split PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
 
+# Hack as the PIC option for set_target_properies doesn't appear to work for CCE
+if(CMAKE_C_COMPILER_ID MATCHES "Cray")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
+endif()
+
 install(TARGETS split DESTINATION lib)
 
 file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/bin DESTINATION ${CMAKE_INSTALL_PREFIX})
