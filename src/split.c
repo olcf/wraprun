@@ -950,7 +950,7 @@ int MPI_Comm_delete_attr(MPI_Comm comm, int comm_keyval) {
   MPI_Comm split_comm;
   SwitchWorldComm(&comm, &split_comm);
 
-  return PMPI_Comm_delete_attR(split_comm, comm_keyval);
+  return PMPI_Comm_delete_attr(split_comm, comm_keyval);
 }
 
 int MPI_Comm_get_attr(MPI_Comm comm, int comm_keyval, void *attribute_val, int *flag) {
@@ -1113,7 +1113,7 @@ int MPI_Ibcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Com
   MPI_Comm split_comm;
   SwitchWorldComm(&comm, &split_comm);
 
-  return PMPI_Ibcase(buffer, count, datatype, root, split_comm, request);
+  return PMPI_Ibcast(buffer, count, datatype, root, split_comm, request);
 }
 
 int MPI_Igather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
@@ -1411,7 +1411,7 @@ int MPI_Comm_split_type(MPI_Comm comm, int split_type, int key, MPI_Info info, M
   MPI_Comm split_comm;
   SwitchWorldComm(&comm, &split_comm);
 
-  return PMPI_Neighbor_split_type(split_comm, split_type, key, info, newcomm);
+  return PMPI_Comm_split_type(split_comm, split_type, key, info, newcomm);
 }
 
 int MPI_Comm_create_group(MPI_Comm comm, MPI_Group group, int tag, MPI_Comm *newcomm) {
