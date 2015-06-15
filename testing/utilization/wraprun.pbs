@@ -32,7 +32,7 @@ PSLOG=$RUNDIR/util_wraprun.$PBS_JOBID.log
 printf "Aprun resource usage log.\n\n" >> $PSLOG
 PROCS=`ps -U $USER -o comm,pid,c,size,rss | grep -e '^\(COMMAND\|aprun\)'`
 echo "$PROCS" >> $PSLOG
-printf "\n\nMemory Summary\n==============\nSIZE  RSS" >> $PSLOG
+printf "\n\nMemory Summary\n==============\nSIZE  RSS\n" >> $PSLOG
 echo "$PROCS" | grep -e '^aprun\s' |  awk '{size += $4; rss += $5} END {print size, rss}' >> $PSLOG
 
 wait
