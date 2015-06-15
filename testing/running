@@ -1,0 +1,4 @@
+Fortran:
+weak ref. something something preload libfmpich.so to fix as is done with darshan.
+also useful: http://lists.mpich.org/pipermail/discuss/2014-November/003437.html
+LD_PRELOAD="/opt/cray/mpt/7.0.4/gni/mpich2-pgi/141/lib/libfmpich_pgi.so:/lustre/atlas/scratch/atj/stf007/libsplit.so" aprun -eSET_ME="0 1" -n 2 ./a.out 
