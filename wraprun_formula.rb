@@ -67,6 +67,16 @@ class WraprunFormula < Formula
     set compiler $env(PE_ENV)
     set compiler [string tolower $compiler]
 
-    setenv WRAPRUN_PRELOAD $env(MPICH_DIR)/lib/libfmpich_$compiler.so:$LUSTREPREFIX/lib/libsplit.so
+    set libmpichf $env(MPICH_DIR)/lib/libfmpich_$compiler.so
+    if { [file exists $libmpichf] == 0 } {
+      set libmpichf $env(MPICH_DIR)/lib/libfmpich.so
+      if { [file exists $libmpichf] == 0 } {
+        puts stderr "Module failed, libfmpich.so not found!"
+        exit [1]
+      }
+    }
+
+    setenv WRAPRUN_PRELOAD $libmpichf:$LUSTREPREFIX/lib/libsplit.so
+
   MODULEFILE
 end
