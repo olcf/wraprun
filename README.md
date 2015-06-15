@@ -13,10 +13,6 @@ $ make
 $ make install
 ```
 
-## To run C:
-* copy lib/libsplit.so to lustre
-* LD_PRELOAD=/path/to/libsplit.so wraprun -n 80 ./a.out : -n 160 ./b.out ...
-
-## To run Fortran:
-* copy lib/libsplit.so to lustre
-* LD_PRELOAD=$MPICH_DIR/lib/libfmpich.so:/path/to/libsplit.so wraprun -n 80 ./a.out : -n 160 ./b.out ...
+## To run:
+* module load wraprun
+* wraprun -n 80 ./a.out : -n 160 ./b.out ...
