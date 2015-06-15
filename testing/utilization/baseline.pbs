@@ -1,7 +1,7 @@
 #!/bin/bash -l
 #PBS -A stf007
 #PBS -q batch
-#PBS -l walltime=01:00:00
+#PBS -l walltime=00:05:00
 #PBS -N wraprun_util_baseline
 #PBS -o util_baseline.pbs.log
 #PBS -j oe
@@ -19,18 +19,15 @@ for i in `seq 1 $PBS_NUM_NODES`; do
   aprun -n 16 -N 16 $PROG &
 done
 
-sleep 5
+sleep 30
 
-PSLOG=$RUNDIR/util_baseline.$PBS_JOBID.log
-SLEEPTIME=10
-echo "Aprun memory usage log. (Sampled every $SLEEPTIME seconds)" >> $PSLOG
-echo 'SIZE  RSS' >> $PSLOG
-while jobs %%; do
-  PROCS=`ps -U $USER -o comm,pid,c,size,rss | grep -e '^\(COMMAND\|aprun\)'`
-  echo "$PROCS" | grep -e '^aprun\s' |  awk '{size += $4; rss += $5} END {print size, rss}' >> $PSLOG
-  sleep $SLEEPTIME
-done
+PSLOG=$RUNDIR/util_wraprun.$PBS_JOBID.log
+printf "Aprun resource usage log.\n\n" >> $PSLOG
+PROCS=`ps -U $USER -o comm,pid,c,size,rss | grep -e '^\(COMMAND\|aprun\)'`
+echo "$PROCS" >> $PSLOG
+printf "\n\nMemory Summary\n==============\nSIZE  RSS" >> $PSLOG
+echo "$PROCS" | grep -e '^aprun\s' |  awk '{size += $4; rss += $5} END {print size, rss}' >> $PSLOG
 
 wait
 
-mv $PSLOG $PBS_O_WORKDIR/util_baseline.log
+mv $PSLOG $PBS_O_WORKDIR/util_baseline.ps.log
