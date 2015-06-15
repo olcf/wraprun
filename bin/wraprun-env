@@ -8,11 +8,11 @@ The main function expects an aprun MPMD mode argument string. See the aprun man
 page for details.
 
 The rank IDs of the MPI processing elements (PEs) for each independent MPI
-exectuable in the aprun call (which share a common MPI_world_comm) are
+exectuable in the aprun call (which share a common MPI_COM_WORLD) are
 extracted, grouped, and formed into environment variable strings compatible with
 the MPI wrapper.
 
-For a program running on N PEs, each PE with MPI_World_comm rank RID is granted
+For a program running on N PEs, each PE with MPI_COM_WORLD rank RID is granted
 an environment variable containing all the associated rank IDs (RID_X) in the
 same group.  The environemnt variables take the form
 
