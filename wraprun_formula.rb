@@ -1,7 +1,7 @@
 class WraprunFormula < Formula
   homepage "https://github.com/olcf/wraprun"
   additional_software_roots [ config_value("lustre-software-root")[hostname] ]
-  url "https://github.com/olcf/wraprun/archive/v0.0.0.tar.gz"
+  url "https://github.com/olcf/wraprun/archive/v0.0.3.tar.gz"
 
   module_commands do
     pe = "PE-"
