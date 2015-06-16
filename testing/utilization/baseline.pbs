@@ -35,4 +35,4 @@ echo "$PROCS" | grep -e '^aprun\s' |  awk '{size += $4; rss += $5} END {print si
 
 wait
 
-mv $PSLOG $PBS_O_WORKDIR/util_baseline.o$PBS_JOBID.mem.log
+mv $PSLOG $PBS_O_WORKDIR/util_baseline.$PBS_JOBID.mem.log
