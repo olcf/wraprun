@@ -91,11 +91,10 @@ def construct_group_variables(rank_groups):
     associated ranks of all PEs in the group.
     '''
     env = {}
-    for group in rank_groups:
-        group_string = ' '.join((str(i) for i in group))
+    for group_id, group in enumerate(rank_groups):
         for rank in group:
             var_name = GROUP_VAR_FORMAT.format(rank=rank)
-            env[var_name] = group_string
+            env[var_name] = str(group_id)
     return env
 
 
