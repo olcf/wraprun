@@ -5,7 +5,12 @@
 #PBS -N util_wraprun
 #PBS -j oe
 
+PPN=16
+
 echo 'Testing resources used by wraprun MPMD calls.'
+echo "Host: $HOST"
+echo "Nodes: $PBS_NUM_NODES"
+echo "PPN: $PPN"
 
 module load wraprun
 
@@ -15,7 +20,7 @@ cd $RUNDIR
 PROG=$RUNDIR/a.out
 
 cmd="wraprun --w-debug "
-arg="-n 16 -N 16 $PROG"
+arg="-n $PPN -N $PPN $PROG"
 sep=" : "
 for i in `seq 1 $(($PBS_NUM_NODES-1))`; do
   cmd+=$arg

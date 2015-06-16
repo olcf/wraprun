@@ -5,7 +5,12 @@
 #PBS -N util_baseline
 #PBS -j oe
 
+PPN=16
+
 echo 'Testing resources used by backgrounded aprun calls.'
+echo "Host: $HOST"
+echo "Nodes: $PBS_NUM_NODES"
+echo "PPN: $PPN"
 
 module unload wraprun
 
@@ -15,7 +20,7 @@ cd $RUNDIR
 PROG=./a.out
 
 for i in `seq 1 $PBS_NUM_NODES`; do
-  aprun -n 16 -N 16 $PROG &
+  aprun -n $PPN -N $PPN $PROG &
 done
 
 sleep 30

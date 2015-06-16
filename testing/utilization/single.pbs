@@ -5,7 +5,12 @@
 #PBS -N util_single
 #PBS -j oe
 
-echo 'Testing resources used by a single SPSD aprun call.'
+PPN=16
+
+echo "Testing resources used by a single SPSD aprun call."
+echo "Host: $HOST"
+echo "Nodes: $PBS_NUM_NODES"
+echo "PPN: $PPN"
 
 module unload wraprun
 
@@ -14,9 +19,9 @@ cd $RUNDIR
 
 PROG=./a.out
 
-PES=$(($PBS_NUM_NODES * 16))
+PES=$(($PBS_NUM_NODES * $PPN))
 
-aprun -n $PES -N 16 $PROG &
+aprun -n $PES -N $PPN $PROG &
 
 sleep 30
 
