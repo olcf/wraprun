@@ -1,9 +1,8 @@
 #!/bin/bash -l
 #PBS -A stf007
 #PBS -q batch
-#PBS -l walltime=00:05:00
-#PBS -N wraprun_util_baseline
-#PBS -o util_baseline.pbs.log
+#PBS -l walltime=01:00:00
+#PBS -N util_baseline
 #PBS -j oe
 
 echo 'Testing resources used by backgrounded aprun calls.'
@@ -30,4 +29,4 @@ echo "$PROCS" | grep -e '^aprun\s' |  awk '{size += $4; rss += $5} END {print si
 
 wait
 
-mv $PSLOG $PBS_O_WORKDIR/util_baseline.ps.$PBS_NUM_NODES.log
+mv $PSLOG $PBS_O_WORKDIR/util_baseline.o$PBS_JOBID.mem.log
