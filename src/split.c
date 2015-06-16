@@ -4,38 +4,22 @@
 #include "debug.h"
 #include "mpi.h"
 
-#define MAX_LOCAL_SIZE 300000
-
 static MPI_Comm MPI_COMM_SPLIT;
 
-// Extract environment variable to local_rank array of length local_size
-static void SetLocalRanks(const int rank, int *local_ranks, int *local_size)
+// Returns color integer fetched from WRAPRUN_{rank}
+static int GetColor(const int rank)
 {
-  // construct environment variable BAPRUN_${RANK}
-  char ranks_var[64];
-  sprintf(ranks_var, "WRAPRUN_%d", rank);
+  // construct environment variable WRAPRUN_${RANK}
+  char color_var[64];
+  sprintf(color_var, "WRAPRUN_%d", rank);
 
-  // Read integer ranks from environment variable to local_ranks
-  char *char_ranks = getenv(ranks_var);
-  if(char_ranks == NULL) {
-    printf("%s environment variable not set, exiting!\n", ranks_var);
+  // Read color from environment variable
+  char *char_color = getenv(color_var);
+  if(char_color == NULL) {
+    printf("%s environment variable not set, exiting!\n", color_var);
     exit(1);
   }
-  *local_size = 0;
-  char *token_end = NULL;
-  int rank_token = strtol(char_ranks, &token_end, 10);
-  while (token_end != char_ranks)
-  {
-    if(*local_size > MAX_LOCAL_SIZE) {
-      printf("Too many ranks for CommSplit library!\n");
-      exit(1);
-    }
-
-    local_ranks[*local_size] = rank_token;
-    ++(*local_size);
-    char_ranks = token_end;
-    rank_token = strtol(char_ranks, &token_end, 10);
-  }
+  return strtol(char_color, &char_color, 10);
 }
 
 // Create MPI_COMM_SPLIT
@@ -44,26 +28,18 @@ int MPI_Init(int *argc, char ***argv) {
 
   int return_value = PMPI_Init(argc, argv);
 
-  int *local_ranks = malloc(MAX_LOCAL_SIZE*sizeof(int));
-  int local_size;
   int rank;
-  PMPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  SetLocalRanks(rank, local_ranks, &local_size);
+  return_value |= PMPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-  MPI_Group world_group;
-  PMPI_Comm_group(MPI_COMM_WORLD, &world_group);
+  int color = GetColor(rank);
 
-  MPI_Group local_group;
-  PMPI_Group_incl(world_group, local_size, local_ranks, &local_group);
+  return_value |= PMPI_Comm_split(MPI_COMM_WORLD, color, 0, &MPI_COMM_SPLIT);
 
-  PMPI_Comm_create(MPI_COMM_WORLD, local_group, &MPI_COMM_SPLIT);
-
-  free(local_ranks);
   return return_value;
 }
 
 // If input_comm == MPI_COMM_WORLD set output_com to MPI_COMM_SPLIT
-static void SwitchWorldComm(const MPI_Comm *input_comm, MPI_Comm *output_comm) {
+static inline void SwitchWorldComm(const MPI_Comm *input_comm, MPI_Comm *output_comm) {
   int comm_is_world;
   PMPI_Comm_compare(MPI_COMM_WORLD, *input_comm, &comm_is_world);
   if(comm_is_world == MPI_IDENT)
