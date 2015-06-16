@@ -13,7 +13,7 @@ echo "Host: $HOST"
 echo "Nodes: $PBS_NUM_NODES"
 echo "PPN: $PPN"
 
-module unload wraprun
+module unload wraprun/0.0.3
 
 RUNDIR=$PROJWORK/stf007/belhorn/wraprun/
 cd $RUNDIR
