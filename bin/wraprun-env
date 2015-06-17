@@ -8,7 +8,7 @@ The main function expects an aprun MPMD mode argument string. See the aprun man
 page for details.
 
 The rank IDs of the MPI processing elements (PEs) for each independent MPI
-exectuable in the aprun call (which share a common MPI_COM_WORLD) are
+executable in the aprun call (which share a common MPI_COM_WORLD) are
 extracted, grouped, and formed into environment variable strings compatible with
 the MPI wrapper.
 
@@ -18,7 +18,7 @@ same group.  The environment variables take the form
 
   WRAPRUN_${RID}="$RID_1 RID_2 ... RID_N"
 
-The function then constructs a string that sets the rank group and MDI wrapper
+The function then constructs a string that sets the rank group and MPI wrapper
 LD_PRELOAD environment variables and appends the aprun call. The string is
 printed to STDOUT which can be evaluated by a calling shell in order to preserve
 shell redirection and backgrounding in PBS submission scripts.  '''
@@ -30,7 +30,7 @@ import os
 VERBOSE=False
 
 def echo(string):
-    '''Print string wrapped in echo so recieving shell doesn't attempt to
+    '''Print string wrapped in echo so receiving shell doesn't attempt to
     execute the contents.
     '''
     print('''echo "{0}";'''.format(string))
@@ -60,7 +60,7 @@ def parser():
     '''
     import argparse
     self = argparse.ArgumentParser(
-            description='Generates shell-evaluatable string to set '
+            description='Generates shell-evaluable string to set '
             'the wraprun environment.')
     self.add_argument('--w-debug', dest='debug', action='store_true',
             help='Show debugging information.')
@@ -100,6 +100,11 @@ def construct_group_variables(rank_groups):
 
 def print_output(env, aprun_args):
     '''Print the output to STDOUT for a shell to interpret.'''
+    if '-b' not in aprun_args[:aprun_args.index('-n')]:
+        log('WARNING',
+            "Required aprun transfer bypass flag '-b' not explicitly set. "
+            'Forcing transfer bypass.')
+        aprun_args.insert(0, '-b')
     aprun_call = 'aprun ' + ' '.join(aprun_args)
     for key in sorted(env.keys()):
         print('{key}="{env}"'.format(key=key,env=env[key]))
