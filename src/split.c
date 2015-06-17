@@ -67,9 +67,9 @@ int MPI_Init(int *argc, char ***argv) {
 }
 
 /*
-  If input_comm == MPI_COMM_WORLD set output_com to MPI_COMM_SPLIT
-  To avoid MPI_Comm_comp and MPI_Comm_dup it is
-  assumed MPI_Comm is typedef of a basic type, e.g. int
+  If input_comm equals MPI_COMM_WORLD return MPI_COMM_SPLIT else input_comm
+  To avoid MPI_Comm_comp and MPI_Comm_dup it is assumed MPI_Comm is
+    typedef of a basic type, e.g. int
 */
 static MPI_Comm SwitchWorldComm(const MPI_Comm input_comm) {
   return (input_comm == MPI_COMM_WORLD) ? MPI_COMM_SPLIT : input_comm;
