@@ -1,14 +1,19 @@
 #!/bin/bash -l
 #PBS -A stf007
 #PBS -q batch
-#PBS -l walltime=00:05:00
-#PBS -N wraprun_util_baseline
-#PBS -o util_baseline.pbs.log
+#PBS -l walltime=01:00:00
+#PBS -o util_baseline.$PBS_JOBID.out.log
+#PBS -N util_baseline
 #PBS -j oe
 
-echo 'Testing resources used by backgrounded aprun calls.'
+PPN=16
 
-module unload wraprun
+echo 'Testing resources used by backgrounded aprun calls.'
+echo "Host: $HOST"
+echo "Nodes: $PBS_NUM_NODES"
+echo "PPN: $PPN"
+
+module unload wraprun/0.0.3
 
 RUNDIR=$PROJWORK/stf007/belhorn/wraprun/
 cd $RUNDIR
@@ -16,7 +21,7 @@ cd $RUNDIR
 PROG=./a.out
 
 for i in `seq 1 $PBS_NUM_NODES`; do
-  aprun -n 16 -N 16 $PROG &
+  aprun -n $PPN -N $PPN $PROG &
 done
 
 sleep 30
@@ -30,4 +35,4 @@ echo "$PROCS" | grep -e '^aprun\s' |  awk '{size += $4; rss += $5} END {print si
 
 wait
 
-mv $PSLOG $PBS_O_WORKDIR/util_baseline.ps.$PBS_NUM_NODES.log
+mv $PSLOG $PBS_O_WORKDIR/util_baseline.$PBS_JOBID.mem.log
