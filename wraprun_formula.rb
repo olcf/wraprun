@@ -35,14 +35,13 @@ class WraprunFormula < Formula
 
       def install
         module_list
-        Dir.chdir prefix
+
+        system "rm -rf source"
+        system "git clone https://github.com/olcf/wraprun.git source" unless Dir.exists?("source")
+        system "cd source; git checkout origin/development"
         system "rm -rf build"
         system "mkdir build"
-        system "git clone https://github.com/olcf/wraprun.git source" unless Dir.exists?("source")
-        Dir.chdir prefix+"/source"
-        system "git checkout origin/development"
-        Dir.chdir prefix
-        system "cd build; cmake -DCMAKE_INSTALL_PREFIX=#{prefix} .."
+        system "cd build; cmake -DCMAKE_INSTALL_PREFIX=#{prefix} ../source"
         system "cd build; make"
         system "cd build; make install"
       end
