@@ -28,4 +28,8 @@ If the module file is not used it is expected that the `WRAPRUN_PRELOAD` environ
 * All executables must reside in a compute mode visible filesystem, e.g. lustre. Executables will not be copied as they normally are.
 
 ## Disclaimer
-`wraprun` works by intercepting <i>all</i> MPI function calls that contain an `MPI_Comm` argument. If an application calls an MPI function not included in `src/split.c` the results are undefined. If you spot a bug or missing functionality please submit a pull request!
+`wraprun` works by intercepting <i>all</i> MPI function calls that contain an `MPI_Comm` argument. If an application calls an MPI function, containing an `MPI_Comm` argument, not included in `src/split.c` the results are undefined.
+
+If any executable is not dynamically linked the results are undefined.
+
+If you spot a bug or missing functionality please submit a pull request!
