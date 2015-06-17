@@ -3,6 +3,54 @@ class WraprunFormula < Formula
   additional_software_roots [ config_value("lustre-software-root")[hostname] ]
   url "https://github.com/olcf/wraprun/archive/v0.0.0.tar.gz"
 
+  
+  concern for_version("dev") do
+    included do
+      url "none"
+
+      module_commands do
+        pe = "PE-"
+        pe = "PrgEnv-" if cray_system?
+
+        commands = [ "unload #{pe}gnu #{pe}pgi #{pe}cray #{pe}intel" ]
+
+        commands << "load #{pe}gnu" if build_name =~ /gnu/
+        commands << "swap gcc gcc/#{$1}" if build_name =~ /gnu([\d\.]+)/
+
+        commands << "load #{pe}pgi" if build_name =~ /pgi/
+        commands << "swap pgi pgi/#{$1}" if build_name =~ /pgi([\d\.]+)/
+
+        commands << "load #{pe}intel" if build_name =~ /intel/
+        commands << "swap intel intel/#{$1}" if build_name =~ /intel([\d\.]+)/
+
+        commands << "load #{pe}cray" if build_name =~ /cray/
+        commands << "swap intel cray/#{$1}" if build_name =~ /cray([\d\.]+)/
+
+        commands << "load dynamic-link"
+        commands << "load cmake"
+        commands << "load git"
+
+        commands
+      end
+
+      def install
+        module_list
+        Dir.chdir prefix
+        system "rm -rf build"
+        system "mkdir build"
+        system "git clone https://github.com/olcf/wraprun.git source" unless Dir.exists?("source")
+        Dir.chdir prefix+"/source"
+        system "git checkout origin/development"
+        Dir.chdir prefix
+        system "cd build; cmake -DCMAKE_INSTALL_PREFIX=#{prefix} .."
+        system "cd build; make"
+        system "cd build; make install"
+      end
+    end
+  end
+
+
+
   module_commands do
     pe = "PE-"
     pe = "PrgEnv-" if cray_system?
