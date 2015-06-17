@@ -41,7 +41,7 @@ static int GetColor(const int rank)
   char *char_color = getenv(color_var);
   if(char_color == NULL) {
     printf("%s environment variable not set, exiting!\n", color_var);
-    exit(1);
+    exit(EXIT_FAILURE);
   }
   return strtol(char_color, &char_color, 10);
 }
@@ -59,8 +59,8 @@ int MPI_Init(int *argc, char ***argv) {
 
   int err = PMPI_Comm_split(MPI_COMM_WORLD, color, 0, &MPI_COMM_SPLIT);
   if(err != MPI_SUCCESS) {
-    printf("Failed to split communicator: %d !\n", err)
-    exit(1);
+    printf("Failed to split communicator: %d !\n", err);
+    exit(EXIT_FAILURE);
   }
 
   return return_value;
