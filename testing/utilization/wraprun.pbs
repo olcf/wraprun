@@ -20,7 +20,7 @@ cd $RUNDIR
 
 PROG=./a.out
 
-cmd="wraprun --w-debug "
+cmd="wraprun --w-debug -b "
 arg="-n $PPN -N $PPN $PROG"
 sep=" : "
 for i in `seq 1 $(($PBS_NUM_NODES-1))`; do
