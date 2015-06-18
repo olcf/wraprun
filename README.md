@@ -32,4 +32,6 @@ If the module file is not used it is expected that the `WRAPRUN_PRELOAD` environ
 
 If any executable is not dynamically linked the results are undefined.
 
+The standard output streams are necessarily shared by all executables and generally written asynchronously. This will typically render output logfiles unintelligible.
+
 If you spot a bug or missing functionality please submit a pull request!
