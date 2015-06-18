@@ -90,9 +90,30 @@ def parser():
     return local_args, aprun_args
 
 
-def get_independent_argstrings(aprun_arg_string):
+def _parse_independent_args(independent_args):
+    '''Parse arguments passed in each executable block (separated by ':') for
+    flags that modify the behavior of each group separately.'''
+    import argparse
+    self = argparse.ArgumentParser()
+    self.add_argument('--w-cd', dest='cd', default='./',
+            help="Set current working directory of this groups's processes.")
+    group_args, aprun_args = self.parse_known_args(independent_args)
+    return group_args, aprun_args
+
+
+def get_independent_argstrings(aprun_arg_list):
     '''Return a list of each independent program's argument list.'''
-    return [i.split() for i in ' '.join(aprun_arg_string).split(':')]
+    aprun_arg_string = ' '.join(aprun_arg_list)
+    group_arg_strings = aprun_arg_string.split(':')
+    group_arg_lists = [i.split() for i in group_arg_strings]
+    group_wraprun_args = []
+    group_aprun_args = []
+    for args in group_arg_lists:
+        wraprun_args, aprun_args = _parse_independent_args(args)
+        group_wraprun_args.append(wraprun_args)
+        group_aprun_args.append(aprun_args)
+    aprun_arg_list = [arg for args in group_aprun_args for arg in args]
+    return group_wraprun_args, group_aprun_args
 
 
 def extract_group_ids(independent_args):
@@ -108,7 +129,7 @@ def extract_group_ids(independent_args):
     return groups
 
 
-def construct_group_variables(rank_groups):
+def construct_group_variables(rank_groups, group_args):
     '''Return a dictionary of environment variables for each rank containing the
     associated ranks of all PEs in the group.
     '''
@@ -116,7 +137,7 @@ def construct_group_variables(rank_groups):
     for group_id, group in enumerate(rank_groups):
         for rank in group:
             var_name = GROUP_VAR_FORMAT.format(rank=rank)
-            env[var_name] = str(group_id)
+            env[var_name] = '{gid} {cd}'.format(gid=group_id, cd=group_args[group_id].cd)
     return env
 
 
@@ -142,10 +163,10 @@ def main():
     local_args, aprun_args = parser()
     VERBOSE=local_args.debug
     log('INFO', 'Launching aprun in wrapped environment')
-    mpmd_commands = get_independent_argstrings(aprun_args)
+    group_args, mpmd_commands = get_independent_argstrings(aprun_args)
     groups = extract_group_ids(mpmd_commands)
-    group_vars = construct_group_variables(groups)
-    print_output(group_vars, aprun_args)
+    group_vars = construct_group_variables(groups, group_args)
+    print_output(group_vars, [i for j in mpmd_commands for i in j])
 
 
 #===============================================================================
