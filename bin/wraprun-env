@@ -166,7 +166,8 @@ def main():
     group_args, mpmd_commands = get_independent_argstrings(aprun_args)
     groups = extract_group_ids(mpmd_commands)
     group_vars = construct_group_variables(groups, group_args)
-    print_output(group_vars, [i for j in mpmd_commands for i in j])
+    new_args = (' : '.join([' '.join(i) for i in mpmd_commands])).split()
+    print_output(group_vars, new_args)
 
 
 #===============================================================================
