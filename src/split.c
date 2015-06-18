@@ -66,6 +66,15 @@ int MPI_Init(int *argc, char ***argv) {
   return return_value;
 }
 
+int MPI_Finalize() {
+  int err = PMPI_Comm_free(&MPI_COMM_SPLIT);
+  if(err != MPI_SUCCESS) {
+    printf("Failed to free split communicator: %d !\n", err);
+    exit(EXIT_FAILURE);
+  }
+  return PMPI_Finalize();
+}
+
 // If input_comm == MPI_COMM_WORLD return MPI_COMM_SPLIT else input_comm
 // MPI standard guarantees opaque types comparable and assignable
 static MPI_Comm GetCorrectComm(const MPI_Comm input_comm) {
