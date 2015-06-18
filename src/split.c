@@ -25,25 +25,30 @@ THE SOFTWARE.
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
+#include <errno.h>
 #include "debug.h"
 #include "mpi.h"
 
 static MPI_Comm MPI_COMM_SPLIT;
 
 // Returns color integer fetched from WRAPRUN_{rank}
-static int GetColor(const int rank)
+static void GetRankParams(const int rank, int *color, char *work_dir)
 {
   // construct environment variable WRAPRUN_${RANK}
-  char color_var[64];
-  sprintf(color_var, "WRAPRUN_%d", rank);
+  // var has format WRAPRUN_${RANK}= color work_dir
+  char rank_var[128];
+  sprintf(rank_var, "WRAPRUN_%d", rank);
 
-  // Read color from environment variable
-  char *char_color = getenv(color_var);
-  if(char_color == NULL) {
-    printf("%s environment variable not set, exiting!\n", color_var);
+  // Get pointer to environment variable character array
+  char *char_var = getenv(rank_var);
+  if(char_var == NULL) {
+    printf("%s environment variable not set, exiting!\n", char_var);
     exit(EXIT_FAILURE);
   }
-  return strtol(char_color, &char_color, 10);
+
+  // Extract parameters
+  sscanf(char_var, "%d %s", color, work_dir);
 }
 
 // Hijack to create MPI_COMM_SPLIT
@@ -55,11 +60,21 @@ int MPI_Init(int *argc, char ***argv) {
   int rank;
   PMPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-  int color = GetColor(rank);
+  int color;
+  char work_dir[1024];
+  GetRankParams(rank, &color, work_dir);
 
+  // Split the communicator based on color
   int err = PMPI_Comm_split(MPI_COMM_WORLD, color, 0, &MPI_COMM_SPLIT);
   if(err != MPI_SUCCESS) {
-    printf("Failed to split communicator: %d !\n", err);
+    printf("Failed to split communicator: %d!\n", err);
+    exit(EXIT_FAILURE);
+  }
+
+  // Change directory to work_dir
+  err = chdir(work_dir);
+  if(err) {
+    printf("Failed to change working directory: %s!\n", strerror(errno));
     exit(EXIT_FAILURE);
   }
 
