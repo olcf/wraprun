@@ -20,6 +20,14 @@ Assuming that the module file created by the Smithy formula is used running is s
 $ module load wraprun
 $ wraprun -n 80 ./foo.out : -n 160 ./bar.out ...
 ```
+
+Optionally a flag can be set to change the current working directory for each executable:
+```
+$ module load wraprun
+$ wraprun -n 80 --w-cd /foo/dir ./foo.out : -n 160 --w-cd /bar/dir ./bar.out ...
+```
+This is particularly useful for legacy Fortran codes that use hard coded input and output file names.
+
 If the module file is not used it is expected that the `WRAPRUN_PRELOAD` environment variable is correctly set to point to `libsplit.so` and potentially `libfmpich.so`.
 
 ## Requirements
