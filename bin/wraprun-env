@@ -1,5 +1,27 @@
 #!/usr/bin/env python
 
+# The MIT License (MIT)
+# 
+# Copyright (c) 2015 M. Belhorn
+# 
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+# 
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+# 
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+# THE SOFTWARE.
+
 '''
 This module provides functions for setting the environment needed to run A.
 Simpson's MPI wrapper for calling independent MPI programs in apruns MPMD mode.
@@ -8,7 +30,7 @@ The main function expects an aprun MPMD mode argument string. See the aprun man
 page for details.
 
 The rank IDs of the MPI processing elements (PEs) for each independent MPI
-exectuable in the aprun call (which share a common MPI_COM_WORLD) are
+executable in the aprun call (which share a common MPI_COM_WORLD) are
 extracted, grouped, and formed into environment variable strings compatible with
 the MPI wrapper.
 
@@ -18,7 +40,7 @@ same group.  The environment variables take the form
 
   WRAPRUN_${RID}="$RID_1 RID_2 ... RID_N"
 
-The function then constructs a string that sets the rank group and MDI wrapper
+The function then constructs a string that sets the rank group and MPI wrapper
 LD_PRELOAD environment variables and appends the aprun call. The string is
 printed to STDOUT which can be evaluated by a calling shell in order to preserve
 shell redirection and backgrounding in PBS submission scripts.  '''
@@ -30,7 +52,7 @@ import os
 VERBOSE=False
 
 def echo(string):
-    '''Print string wrapped in echo so recieving shell doesn't attempt to
+    '''Print string wrapped in echo so receiving shell doesn't attempt to
     execute the contents.
     '''
     print('''echo "{0}";'''.format(string))
@@ -60,7 +82,7 @@ def parser():
     '''
     import argparse
     self = argparse.ArgumentParser(
-            description='Generates shell-evaluatable string to set '
+            description='Generates shell-evaluable string to set '
             'the wraprun environment.')
     self.add_argument('--w-debug', dest='debug', action='store_true',
             help='Show debugging information.')
@@ -100,6 +122,11 @@ def construct_group_variables(rank_groups):
 
 def print_output(env, aprun_args):
     '''Print the output to STDOUT for a shell to interpret.'''
+    if '-b' not in aprun_args[:aprun_args.index('-n')]:
+        log('WARNING',
+            "Required aprun transfer bypass flag '-b' not explicitly set. "
+            'Forcing transfer bypass.')
+        aprun_args.insert(0, '-b')
     aprun_call = 'aprun ' + ' '.join(aprun_args)
     for key in sorted(env.keys()):
         print('{key}="{env}"'.format(key=key,env=env[key]))

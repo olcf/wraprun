@@ -2,34 +2,27 @@
 #PBS -A stf007
 #PBS -q batch
 #PBS -l walltime=01:00:00
-#PBS -o util_wraprun.$PBS_JOBID.out.log
-#PBS -N util_wraprun
+#PBS -o util_single.$PBS_JOBID.out.log
+#PBS -N util_single
 #PBS -j oe
 
 PPN=16
 
-echo 'Testing resources used by wraprun MPMD calls.'
+echo "Testing resources used by a single SPSD aprun call."
 echo "Host: $HOST"
 echo "Nodes: $PBS_NUM_NODES"
 echo "PPN: $PPN"
 
-module load wraprun/dev
+module unload wraprun/0.0.3
 
 RUNDIR=$PROJWORK/stf007/belhorn/wraprun/
 cd $RUNDIR
 
 PROG=./a.out
 
-cmd="wraprun --w-debug -b "
-arg="-n $PPN -N $PPN $PROG"
-sep=" : "
-for i in `seq 1 $(($PBS_NUM_NODES-1))`; do
-  cmd+=$arg
-  cmd+=$sep
-done
-cmd+=$arg
+PES=$(($PBS_NUM_NODES * $PPN))
 
-eval $cmd &
+aprun -n $PES -N $PPN $PROG &
 
 sleep 30
 
@@ -42,4 +35,4 @@ echo "$PROCS" | grep -e '^aprun\s' |  awk '{size += $4; rss += $5} END {print si
 
 wait
 
-mv $PSLOG $PBS_O_WORKDIR/util_wraprun.$PBS_JOBID.mem.log
+mv $PSLOG $PBS_O_WORKDIR/util_single.$PBS_JOBID.mem.log
