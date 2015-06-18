@@ -47,8 +47,8 @@ static void GetRankParams(const int rank, int *color, char *work_dir)
     exit(EXIT_FAILURE);
   }
 
-  // Extract parameters 
-  sscanf(char_var, "%d %s", color, work_dir)
+  // Extract parameters
+  sscanf(char_var, "%d %s", color, work_dir);
 }
 
 // Hijack to create MPI_COMM_SPLIT
