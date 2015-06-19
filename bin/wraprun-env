@@ -47,6 +47,7 @@ shell redirection and backgrounding in PBS submission scripts.  '''
 
 from __future__ import print_function
 import os
+import sys
 
 
 VERBOSE=False
@@ -65,94 +66,141 @@ def log(lvl, msg):
         echo(log_string.format(lvl=lvl, msg=msg))
 
 
-# Get the PRELOAD lib from the environment else use an alternate version.
-if 'WRAPRUN_PRELOAD' not in os.environ.keys():
-    log('WARNING', 'Environment variable WRAPRUN_PRELOAD not set. '
-        'Using alternate MPI wrapper.')
-LIB_PATH=os.environ.pop('WRAPRUN_PRELOAD',
-        '/lustre/atlas/proj-shared/stf007/libsplit.so')
-
-GROUP_VAR_FORMAT='WRAPRUN_{rank}'
 
 
-def parser():
-    '''
-    Parse CLI arguments for wraprun specific options and aprun specific
-    arguments.
-    '''
-    import argparse
-    self = argparse.ArgumentParser(
-            description='Generates shell-evaluable string to set '
-            'the wraprun environment.')
-    self.add_argument('--w-debug', dest='debug', action='store_true',
-            help='Show debugging information.')
-    local_args, aprun_args = self.parse_known_args()
-    return local_args, aprun_args
+import argparse
+class Group(object):
+    def __init__(self, arg_list, id, first_mpi_rank):
+        parser = argparse.ArgumentParser(add_help=False)
+        parser.add_argument('--w-cd', dest='cd', default='./',
+                help="Set cwd for a groups's processes.")
+
+        self.wraprun, self.aprun_arglist = parser.parse_known_args(arg_list)
+        self.wraprun.id = id
+        self.pes = self._get_pes()
+
+        last_mpi_rank = first_mpi_rank + self.pes
+        self.ranks = [i for i in range(first_mpi_rank, last_mpi_rank)]
+
+    def _get_pes(self):
+        try:
+            index = self.aprun_arglist.index('-n') + 1
+            return int(self.aprun_arglist[index])
+        except ValueError:
+            log('ERROR', "Missing aprun '-n' PE argument for executable "
+                    "'{g}' with signature ".format(g=self.wraprun.id))
+            log('ERROR', "'{s}'".format(s=' '.join(self.aprun_arglist)))
+            sys.exit(1)
+
+    def has_arg(self, arg):
+        '''Return true if arg in set of aprun arguments'''
+        return True if arg in self.aprun_arglist else False
+
+    def arg_string(self):
+        return ' '.join(self.aprun_arglist)
+
+    def env_string(self):
+        var = "{id} {cd}"
+        return var.format(**(self.wraprun.__dict__))
 
 
-def _parse_independent_args(independent_args):
-    '''Parse arguments passed in each executable block (separated by ':') for
-    flags that modify the behavior of each group separately.'''
-    import argparse
-    self = argparse.ArgumentParser()
-    self.add_argument('--w-cd', dest='cd', default='./',
-            help="Set current working directory of this groups's processes.")
-    group_args, aprun_args = self.parse_known_args(independent_args)
-    return group_args, aprun_args
+
+class Arguments(object):
+    '''A class to parse and encapsulate arguments to a wraprun call and it's
+    underlying aprun call.'''
+    REQUIRED_APRUN_ARGS = {'-b':None,}
+
+    def __init__(self):
+        self.wraprun, remaining_arglist = self._parse_cli()
+        global VERBOSE
+        VERBOSE = self.wraprun.debug
+        self.groups = self._parse_group_args(remaining_arglist)
+        self.aprun_arglist = self._parse_aprun_global_args(self.groups[0])
+        
+    def _parse_cli(self):
+        '''Parse CLI arguments for wraprun specific options and aprun specific
+        arguments.'''
+        cli_parser = argparse.ArgumentParser(
+                description='Generates shell-evaluable string to set '
+                'the wraprun environment.')
+        cli_parser.add_argument('--w-debug', dest='debug', action='store_true',
+                help='Show debugging information.')
+
+        return cli_parser.parse_known_args()
+
+    def _parse_group_args(self, arglist):
+        groups = []
+        total_pes = 0
+        for id, group_args in enumerate(self.find_groups(arglist)):
+            group = Group(group_args, id, total_pes)
+            groups.append(group)
+            total_pes+=group.pes
+        return groups
+
+    @staticmethod
+    def find_groups(arglist):
+        '''Given a 1D list of wraprun arguments, return a 2D list of arguments
+        grouped by respective MPMD executable block.''' 
+        return [i.split() for i in (' '.join(arglist)).split(':')]
+
+    def _parse_aprun_global_args(self, first_group):
+        aprun_arglist = ['aprun']
+        for arg, value in self.REQUIRED_APRUN_ARGS.items():
+            if not first_group.has_arg(arg):
+                log('WARNING',
+                        "Adding required aprun argument '{a}'.".format(a=arg))
+                aprun_arglist.append(arg)
+                if value is not None:
+                    aprun_arglist.append(arg)
+        return aprun_arglist
+
+    def group_arg_strings(self):
+        return [group.arg_string() for group in self.groups]
+
+    def groups_arg_string(self):
+        return ' : '.join(self.group_arg_strings())
+
+    def aprun_arg_string(self):
+        arg_strings = {
+                'aprun': ' '.join(self.aprun_arglist),
+                'groups': self.groups_arg_string(),
+                }
+        return '{aprun} {groups}'.format(**arg_strings)
 
 
-def get_independent_argstrings(aprun_arg_list):
-    '''Return a list of each independent program's argument list.'''
-    aprun_arg_string = ' '.join(aprun_arg_list)
-    group_arg_strings = aprun_arg_string.split(':')
-    group_arg_lists = [i.split() for i in group_arg_strings]
-    group_wraprun_args = []
-    group_aprun_args = []
-    for args in group_arg_lists:
-        wraprun_args, aprun_args = _parse_independent_args(args)
-        group_wraprun_args.append(wraprun_args)
-        group_aprun_args.append(aprun_args)
-    aprun_arg_list = [arg for args in group_aprun_args for arg in args]
-    return group_wraprun_args, group_aprun_args
+class Wraprun(object):
+    def __init__(self):
+        self.args = Arguments()
+        self.groups = self.args.groups
+        self.env = self._update_env()
 
+    def _update_env(self):
+        env = {}
+        for group in self.groups:
+            for rank in group.ranks:
+                name = 'WRAPRUN_{rank}'.format(
+                        rank=rank)
+                env[name] = group.env_string()
+        env['LD_PRELOAD'] = self._get_preload_path()
+        return env
 
-def extract_group_ids(independent_args):
-    '''Return a list of group rank ID lists extracted from aprun arguments.'''
-    total_pes = 0
-    groups = []
-    for args in independent_args:
-        pes_index = args.index('-n') + 1
-        pes = int(args[pes_index])
-        current_pes = int(total_pes)
-        total_pes+=pes
-        groups.append([i for i in range(current_pes, total_pes)])
-    return groups
+    def _get_preload_path(self):
+        if 'WRAPRUN_PRELOAD' not in os.environ.keys():
+            log('WARNING', 'Environment variable WRAPRUN_PRELOAD not set. '
+                'Using alternate MPI wrapper.')
+        return os.environ.pop('WRAPRUN_PRELOAD',
+                '/lustre/atlas/proj-shared/stf007/libsplit.so')
 
+    def env_string(self):
+        '''Return the set of shell-evaluable strings needed to
+        set the environment.'''
+        return ['{name}="{value}"'.format(name=name, value=value)
+                for name, value in sorted(self.env.items())]
 
-def construct_group_variables(rank_groups, group_args):
-    '''Return a dictionary of environment variables for each rank containing the
-    associated ranks of all PEs in the group.
-    '''
-    env = {}
-    for group_id, group in enumerate(rank_groups):
-        for rank in group:
-            var_name = GROUP_VAR_FORMAT.format(rank=rank)
-            env[var_name] = '{gid} {cd}'.format(gid=group_id, cd=group_args[group_id].cd)
-    return env
-
-
-def print_output(env, aprun_args):
-    '''Print the output to STDOUT for a shell to interpret.'''
-    if '-b' not in aprun_args[:aprun_args.index('-n')]:
-        log('WARNING',
-            "Required aprun transfer bypass flag '-b' not explicitly set. "
-            'Forcing transfer bypass.')
-        aprun_args.insert(0, '-b')
-    aprun_call = 'aprun ' + ' '.join(aprun_args)
-    for key in sorted(env.keys()):
-        print('{key}="{env}"'.format(key=key,env=env[key]))
-    print('LD_PRELOAD={lib} '.format(lib=LIB_PATH) +
-            aprun_call)
+    def eval(self):
+        for env in self.env_string():
+            print(env)
+        print(self.args.aprun_arg_string())
 
 
 def main():
@@ -160,23 +208,19 @@ def main():
     commands.
     '''
 
-    local_args, aprun_args = parser()
-    VERBOSE=local_args.debug
+    wraprun = Wraprun()
     log('INFO', 'Launching aprun in wrapped environment')
-    group_args, mpmd_commands = get_independent_argstrings(aprun_args)
-    groups = extract_group_ids(mpmd_commands)
-    group_vars = construct_group_variables(groups, group_args)
-    new_args = (' : '.join([' '.join(i) for i in mpmd_commands])).split()
-    print_output(group_vars, new_args)
+    if wraprun.args.wraprun.debug:
+        log('DEBUG', 'Setting environment variables:')
+        for env in wraprun.env_string():
+            log('DEBUG', env)
+        log('DEBUG', 'Command line called:')
+        log('DEBUG', wraprun.args.aprun_arg_string())
+    wraprun.eval()
+
 
 
 #===============================================================================
 if __name__ == '__main__':
-    import sys
-    try:
-        main()
-    except Exception as e:
-        log('ERROR', 'Caught a python exception:')
-        log('ERROR', str(e))
-        sys.exit(1)
+    main()
 
