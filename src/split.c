@@ -33,6 +33,43 @@ THE SOFTWARE.
 static MPI_Comm MPI_COMM_SPLIT;
 
 // Returns color integer fetched from WRAPRUN_{rank}
+static void GetRankParamsFromFile(const int rank, int *color, char *work_dir)
+{
+  // Get file name from environment variable
+  char *file_name = getenv("WRAPRUN_FILE");
+  if(file_name == NULL) {
+    printf("%s environment variable not set, exiting!\n", "WRAPRUN_FILE");
+    exit(EXIT_FAILURE);
+  }
+
+  // Search file and read in rank'th line of file
+  FILE *file;
+  char *line = NULL;
+  size_t length = 0;
+  ssize_t char_count;
+
+  file = fopen(file_name, "r");
+  if(file == NULL) {
+    printf("Can't open %s\n", file_name);
+    exit(EXIT_FAILURE);
+  }
+
+  for(int i=0; i<=rank; i++) {
+    char_count = getline(&line, &length, file);
+    if(read == -1) {
+      printf("Error reading rank %d info from %s\n", rank, file_name);
+      exit(EXIT_FAILURE);
+    }
+  }
+
+  // Extract parameters
+  sscanf(line, "%d %s", color, work_dir);
+
+  free(line);
+  free(file);
+}
+
+// Returns color integer fetched from WRAPRUN_{rank}
 static void GetRankParams(const int rank, int *color, char *work_dir)
 {
   // construct environment variable WRAPRUN_${RANK}
