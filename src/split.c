@@ -43,7 +43,7 @@ static void GetRankParams(const int rank, int *color, char *work_dir)
   // Get pointer to environment variable character array
   char *char_var = getenv(rank_var);
   if(char_var == NULL) {
-    printf("%s environment variable not set, exiting!\n", char_var);
+    printf("%s environment variable not set, exiting!\n", rank_var);
     exit(EXIT_FAILURE);
   }
 
