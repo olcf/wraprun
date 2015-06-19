@@ -1,245 +1,378 @@
+/*
+The MIT License (MIT)
+
+Copyright (c) 2015 Adam Simpson
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+*/
+
+/*
+  libsplit is a library designed to split MPI_COMM_WORLD into multiple smaller
+  communicators. Upon calling MPI_Init() the file pointed to by the WRAPRUN_FILE
+  environment variable is opened and the contents read. This file content is parsed
+  to determine the ranks particular color as well as the desired working directory
+  and process specific environment variables.
+
+  The color is used to create the MPI_COMM_SPLIT communicator. All MPI* functions
+  containing a communicator are provided and anytime MPI_COMM_WORLD is passed
+  in it will be switched out for MPI_COMM_SPLIT before calling PMPI*
+*/
+
+#define _GNU_SOURCE // RTLD_NEXT, must define this before ANY standard header
+#include <dlfcn.h>  // dlsym()
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "debug.h"
+#include <unistd.h>
+#include <errno.h>
+#include "print_macros.h"
 #include "mpi.h"
-
-#define MAX_LOCAL_SIZE 300000
 
 static MPI_Comm MPI_COMM_SPLIT;
 
-// Extract environment variable to local_rank array of length local_size
-static void SetLocalRanks(const int rank, int *local_ranks, int *local_size)
-{
-  // construct environment variable BAPRUN_${RANK}
-  char ranks_var[64];
-  sprintf(ranks_var, "WRAPRUN_%d", rank);
+// Reads in rank line of WRAPRUN_FILE
+// space seperated values are parsed to set color, work_dir, and env_vars
+static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
+                                  char *env_vars) {
+  // Get file name from environment variable
+  const char *const file_name = getenv("WRAPRUN_FILE");
+  if(!file_name)
+    EXIT_PRINT("%s environment variable not set, exiting!\n", "WRAPRUN_FILE");
 
-  // Read integer ranks from environment variable to local_ranks
-  char *char_ranks = getenv(ranks_var);
-  if(char_ranks == NULL) {
-    printf("%s environment variable not set, exiting!\n", ranks_var);
-    exit(1);
+  // Search file and read in rank'th line of file
+  FILE *const file = fopen(file_name, "r");
+  if(!file)
+    EXIT_PRINT("Can't open %s\n", file_name);
+
+  char *line = NULL;
+
+  int line_num;
+  for(line_num=0; line_num<=rank; ++line_num) {
+    size_t length = 0;
+    const ssize_t char_count = getline(&line, &length, file);
+    if(char_count == -1)
+      EXIT_PRINT("Error reading rank %d info from %s\n", rank, file_name);
   }
-  *local_size = 0;
-  char *token_end = NULL;
-  int rank_token = strtol(char_ranks, &token_end, 10);
-  while (token_end != char_ranks)
-  {
-    if(*local_size > MAX_LOCAL_SIZE) {
-      printf("Too many ranks for CommSplit library!\n");
-      exit(1);
-    }
 
-    local_ranks[*local_size] = rank_token;
-    ++(*local_size);
-    char_ranks = token_end;
-    rank_token = strtol(char_ranks, &token_end, 10);
+  // Extract parameters
+  const int num_params = sscanf(line, "%d %s %s", color, work_dir, env_vars);
+  if(num_params == EOF)
+    EXIT_PRINT("Error parsing file line\n");
+
+  free(line);
+  fclose(file);
+}
+
+void SetSplitCommunicator(const int color) {
+  const int err = PMPI_Comm_split(MPI_COMM_WORLD, color, 0, &MPI_COMM_SPLIT);
+  if(err != MPI_SUCCESS)
+    EXIT_PRINT("Failed to split communicator: %d!\n", err);
+}
+
+void SetWorkingDirectory(const char *const work_dir) {
+  const int err = chdir(work_dir);
+  if(err)
+    EXIT_PRINT("Failed to change working directory: %s!\n", strerror(errno));
+}
+
+// Set environment variables in env_vars string
+// with format "key1=value2;key2=value2"
+static void SetEnvironmentVaribles(char *env_vars) {
+  char *token;
+
+  // environment variables are optional
+  if(strlen(env_vars) == 0)
+    return;
+
+  while ((token = strsep(&env_vars, ";")) != NULL) {
+    char key[1024];
+    char value[1024];
+    const int num_components = sscanf(token, "%s=%s", key, value);
+    if(num_components == 2) {
+      const int err = setenv(key, value, 1);
+      if(err)
+        EXIT_PRINT("Error setting environment variable: %s\n", strerror(errno));
+    }
+    else
+      EXIT_PRINT("Error parsing environment_variables\n");
   }
 }
 
-// Create MPI_COMM_SPLIT
-int MPI_Init(int *argc, char ***argv) {
-  DEBUG_PRINT("Wrapped!\n");
+// Redirect stdout and stderr to file based upon color
+void SetStdOutErr(const int color) {
+  const char *const job_id = getenv("PBS_JOBID");
+  char file_name[1024];
 
-  int return_value = PMPI_Init(argc, argv);
+  sprintf(file_name, "%s_w_%d.out", job_id, color);
+  const FILE *const out_handle = freopen(file_name, "a", stdout);
+  if(!out_handle)
+    EXIT_PRINT("Error setting stdout!\n");
 
-  int *local_ranks = malloc(MAX_LOCAL_SIZE*sizeof(int));
-  int local_size;
+  sprintf(file_name, "%s_w_%d.err", job_id, color);
+  const FILE *const err_handle = freopen(file_name, "a", stderr);
+  if(!err_handle)
+    EXIT_PRINT("Error setting stderr\n");
+}
+
+void CloseStdOutErr() {
+  fclose(stdout);
+  fclose(stderr);
+}
+
+void SplitInit() {
+  // Cray has issues when LD_PRELOAD is set
+  // and exec*() is called...this is a workaround
+  if (getenv("W_UNSET_PRELOAD"))
+    unsetenv("LD_PRELOAD");
+
   int rank;
   PMPI_Comm_rank(MPI_COMM_WORLD, &rank);
-  SetLocalRanks(rank, local_ranks, &local_size);
 
-  MPI_Group world_group;
-  PMPI_Comm_group(MPI_COMM_WORLD, &world_group);
+  int color;
+  char *const work_dir = calloc(2048, sizeof(char));
+  if(!work_dir)
+    EXIT_PRINT("Error allocating work_dir memory!\n");
+  char *const env_vars = calloc(4096, sizeof(char));
+  if(!env_vars)
+    EXIT_PRINT("Error allocating env_vars memory!\n");
+  env_vars[0] = '\0'; // "zero" out env_vars
 
-  MPI_Group local_group;
-  PMPI_Group_incl(world_group, local_size, local_ranks, &local_group);
+  GetRankParamsFromFile(rank, &color, work_dir, env_vars);
 
-  PMPI_Comm_create(MPI_COMM_WORLD, local_group, &MPI_COMM_SPLIT);
+  if (getenv("W_REDIRECT_OUTERR"))
+    SetStdOutErr(color);
 
-  free(local_ranks);
+  SetSplitCommunicator(color);
+
+  SetWorkingDirectory(work_dir);
+
+  SetEnvironmentVaribles(env_vars);
+
+  free(work_dir);
+  free(env_vars);
+}
+
+int MPI_Init(int *argc, char ***argv) {
+  // Allow MPI_Init to be called directly
+  int return_value;
+  if (getenv("W_UNWRAP_INIT")) {
+    DEBUG_PRINT("Unwrapped!\n");
+    int (*real_MPI_Init)(int*, char***) = dlsym(RTLD_NEXT, "MPI_Init");
+    return_value = (*real_MPI_Init)(argc, argv);
+  }
+  else {
+    DEBUG_PRINT("Wrapped!\n");
+    return_value = PMPI_Init(argc, argv);
+  }
+
+  SplitInit();
   return return_value;
 }
 
-// If input_comm == MPI_COMM_WORLD set output_com to MPI_COMM_SPLIT
-static void SwitchWorldComm(const MPI_Comm *input_comm, MPI_Comm *output_comm) {
-  int comm_is_world;
-  PMPI_Comm_compare(MPI_COMM_WORLD, *input_comm, &comm_is_world);
-  if(comm_is_world == MPI_IDENT)
-    PMPI_Comm_dup(MPI_COMM_SPLIT, output_comm);
+int MPI_Finalize() {
+  const int err = PMPI_Comm_free(&MPI_COMM_SPLIT);
+  if(err != MPI_SUCCESS)
+    EXIT_PRINT("Failed to free split communicator: %d !\n", err);
+
+  // Allow MPI_Finalize to be called directly
+  int return_value;
+  if (getenv("W_UNWRAP_FINALIZE")) {
+    DEBUG_PRINT("Unwrapped!\n");
+    int (*real_MPI_Finalize)() = dlsym(RTLD_NEXT, "MPI_Finalize");
+    return_value = (*real_MPI_Finalize)();
+  }
+  else {
+    DEBUG_PRINT("Wrapped!\n");
+    return_value = PMPI_Finalize();
+  }
+
+  if (getenv("W_REDIRECT_OUTERR"))
+    CloseStdOutErr();
+
+  return return_value;
+}
+
+// If input_comm == MPI_COMM_WORLD return MPI_COMM_SPLIT else input_comm
+// MPI standard guarantees opaque types comparable and assignable
+static MPI_Comm GetCorrectComm(const MPI_Comm input_comm) {
+  MPI_Comm correct_comm;
+  if(input_comm == MPI_COMM_WORLD)
+    correct_comm = MPI_COMM_SPLIT;
   else
-    PMPI_Comm_dup(*input_comm, output_comm);
+    correct_comm = input_comm;
+
+  return correct_comm;
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-///// Wrapper functions
+///// Simple MPI wrapper functions
 //////////////////////////////////////////////////////////////////////////////
 int MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
              MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Send(buf, count, datatype, dest, tag, split_comm);
+  return PMPI_Send(buf, count, datatype, dest, tag, correct_comm);
 }
+
 int MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
              MPI_Comm comm, MPI_Status *status) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Recv(buf, count, datatype, source, tag, split_comm, status);
+  return PMPI_Recv(buf, count, datatype, source, tag, correct_comm, status);
 }
 
 int MPI_Bsend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
              MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Bsend(buf, count, datatype, dest, tag, split_comm);
+  return PMPI_Bsend(buf, count, datatype, dest, tag, correct_comm);
 }
 
 int MPI_Ssend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
              MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Ssend(buf, count, datatype, dest, tag, split_comm);
+  return PMPI_Ssend(buf, count, datatype, dest, tag, correct_comm);
 }
 
 int MPI_Rsend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
              MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Rsend(buf, count, datatype, dest, tag, split_comm);
+  return PMPI_Rsend(buf, count, datatype, dest, tag, correct_comm);
 }
 
 int MPI_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
               MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Isend(buf, count, datatype, dest, tag, split_comm, request);
+  return PMPI_Isend(buf, count, datatype, dest, tag, correct_comm, request);
 }
 
 int MPI_Ibsend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
               MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Ibsend(buf, count, datatype, dest, tag, split_comm, request);
+  return PMPI_Ibsend(buf, count, datatype, dest, tag, correct_comm, request);
 }
 
 int MPI_Issend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
               MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Issend(buf, count, datatype, dest, tag, split_comm, request);
+  return PMPI_Issend(buf, count, datatype, dest, tag, correct_comm, request);
 }
 
 int MPI_Irsend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
               MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Irsend(buf, count, datatype, dest, tag, split_comm, request);
+  return PMPI_Irsend(buf, count, datatype, dest, tag, correct_comm, request);
 }
 
 int MPI_Irecv(void *buf, int count, MPI_Datatype datatype, int source,
               int tag, MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Irecv(buf, count, datatype, source, tag, split_comm, request);
+  return PMPI_Irecv(buf, count, datatype, source, tag, correct_comm, request);
 }
 
 int MPI_Iprobe(int source, int tag, MPI_Comm comm, int *flag, MPI_Status *status) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Iprobe(source, tag, split_comm, flag, status);
+  return PMPI_Iprobe(source, tag, correct_comm, flag, status);
 }
 
 int MPI_Probe(int source, int tag, MPI_Comm comm, MPI_Status *status) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Probe(source, tag, split_comm, status);
+  return PMPI_Probe(source, tag, correct_comm, status);
 }
 
 int MPI_Send_init(const void *buf, int count, MPI_Datatype datatype, int dest,
                  int tag, MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Send_init(buf, count, datatype, dest, tag, split_comm, request);
+  return PMPI_Send_init(buf, count, datatype, dest, tag, correct_comm, request);
 }
 
 int MPI_Bsend_init(const void *buf, int count, MPI_Datatype datatype, int dest,
                  int tag, MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Bsend_init(buf, count, datatype, dest, tag, split_comm, request);
+  return PMPI_Bsend_init(buf, count, datatype, dest, tag, correct_comm, request);
 }
 
 int MPI_Ssend_init(const void *buf, int count, MPI_Datatype datatype, int dest,
                  int tag, MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Ssend_init(buf, count, datatype, dest, tag, split_comm, request);
+  return PMPI_Ssend_init(buf, count, datatype, dest, tag, correct_comm, request);
 }
 
 int MPI_Rsend_init(const void *buf, int count, MPI_Datatype datatype, int dest,
                  int tag, MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Rsend_init(buf, count, datatype, dest, tag, split_comm, request);
+  return PMPI_Rsend_init(buf, count, datatype, dest, tag, correct_comm, request);
 }
 
 int MPI_Recv_init(void *buf, int count, MPI_Datatype datatype, int source,
                  int tag, MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Recv_init(buf, count, datatype, source, tag, split_comm, request);
+  return PMPI_Recv_init(buf, count, datatype, source, tag, correct_comm, request);
 }
 
 int MPI_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
@@ -250,12 +383,11 @@ int MPI_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
 
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Sendrecv(sendbuf, sendcount, sendtype, dest, sendtag,
                        recvbuf, recvcount, recvtype, source, recvtag,
-                       split_comm, status);
+                       correct_comm, status);
 }
 
 int MPI_Sendrecv_replace(void *buf, int count, MPI_Datatype datatype,
@@ -263,11 +395,10 @@ int MPI_Sendrecv_replace(void *buf, int count, MPI_Datatype datatype,
                        MPI_Comm comm, MPI_Status *status) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Sendrecv_replace(buf, count, datatype, dest, sendtag, source,
-                               recvtag, split_comm, status);
+                               recvtag, correct_comm, status);
 }
 
 int MPI_Pack(const void *inbuf,
@@ -279,11 +410,10 @@ int MPI_Pack(const void *inbuf,
              MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Pack(inbuf, incount, datatype,
-                   outbuf, outsize, position, split_comm);
+                   outbuf, outsize, position, correct_comm);
 
 }
 
@@ -292,38 +422,34 @@ int MPI_Unpack(const void *inbuf, int insize, int *position,
                MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Unpack(inbuf, insize, position, outbuf, outcount,
-                     datatype, split_comm);
+                     datatype, correct_comm);
 }
 
 int MPI_Pack_size(int incount, MPI_Datatype datatype, MPI_Comm comm, int *size) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Pack_size(incount, datatype, split_comm, size);
+  return PMPI_Pack_size(incount, datatype, correct_comm, size);
 }
 
 int MPI_Barrier(MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Barrier(split_comm);
+  return PMPI_Barrier(correct_comm);
 }
 
 int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Bcast(buffer, count, datatype, root, split_comm);
+  return PMPI_Bcast(buffer, count, datatype, root, correct_comm);
 }
 
 int MPI_Gather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
@@ -331,11 +457,10 @@ int MPI_Gather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
     MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Gather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype,
-                     root, split_comm);
+                     root, correct_comm);
 }
 
 int MPI_Gatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
@@ -343,11 +468,10 @@ int MPI_Gatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                 MPI_Datatype recvtype, int root, MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Gatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts,
-                      displs, recvtype, root, split_comm);
+                      displs, recvtype, root, correct_comm);
 }
 
 int MPI_Scatter(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
@@ -356,11 +480,10 @@ int MPI_Scatter(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
 
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Scatter(sendbuf, sendcount, sendtype, recvbuf, recvcount,
-                      recvtype, root, split_comm);
+                      recvtype, root, correct_comm);
 
 }
 
@@ -370,11 +493,10 @@ int MPI_Scatterv(const void *sendbuf, const int *sendcounts, const int *displs,
                  int root, MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Scatterv(sendbuf, sendcounts, displs, sendtype, recvbuf, recvcount,
-                      recvtype, root, split_comm);
+                      recvtype, root, correct_comm);
 }
 
 int MPI_Allgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
@@ -382,11 +504,10 @@ int MPI_Allgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                   MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Allgather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype,
-                        split_comm);
+                        correct_comm);
 }
 
 int MPI_Allgatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
@@ -394,11 +515,10 @@ int MPI_Allgatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                    MPI_Datatype recvtype, MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Allgatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs,
-                        recvtype, split_comm);
+                        recvtype, correct_comm);
 }
 
 int MPI_Alltoall(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
@@ -406,11 +526,10 @@ int MPI_Alltoall(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                  MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Alltoall(sendbuf, sendcount, sendtype, recvbuf, recvcount,
-                       recvtype, split_comm);
+                       recvtype, correct_comm);
 }
 
 int MPI_Alltoallv(const void *sendbuf, const int *sendcounts,
@@ -419,13 +538,12 @@ int MPI_Alltoallv(const void *sendbuf, const int *sendcounts,
                   MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Alltoallv(sendbuf, sendcounts,
                         sdispls, sendtype, recvbuf,
                         recvcounts, rdispls, recvtype,
-                        split_comm);
+                        correct_comm);
 }
 
 int MPI_Alltoallw(const void *sendbuf, const int sendcounts[],
@@ -434,179 +552,158 @@ int MPI_Alltoallw(const void *sendbuf, const int sendcounts[],
                   const MPI_Datatype recvtypes[], MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Alltoallw(sendbuf, sendcounts,
                         sdispls, sendtypes,
                         recvbuf, recvcounts, rdispls,
-                        recvtypes, split_comm);
+                        recvtypes, correct_comm);
 }
 
 int MPI_Exscan(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                MPI_Op op, MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Exscan(sendbuf, recvbuf, count, datatype, op, split_comm);
+  return PMPI_Exscan(sendbuf, recvbuf, count, datatype, op, correct_comm);
 }
 
 int MPI_Reduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                MPI_Op op, int root, MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Reduce(sendbuf, recvbuf, count, datatype,
-                    op, root, split_comm);
+                    op, root, correct_comm);
 }
 
 int MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
                   MPI_Datatype datatype, MPI_Op op, MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Allreduce(sendbuf, recvbuf, count,
-                        datatype, op, split_comm);
+                        datatype, op, correct_comm);
 }
 
 int MPI_Reduce_scatter(const void *sendbuf, void *recvbuf, const int recvcounts[],
                       MPI_Datatype datatype, MPI_Op op, MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Reduce_scatter(sendbuf, recvbuf, recvcounts,
-                             datatype, op, split_comm);
+                             datatype, op, correct_comm);
 }
 
 int MPI_Scan(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
              MPI_Op op, MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Scan(sendbuf, recvbuf, count, datatype,
-                   op, split_comm);
+                   op, correct_comm);
 }
 
 int MPI_Comm_group(MPI_Comm comm, MPI_Group *group) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_group(split_comm, group);
+  return PMPI_Comm_group(correct_comm, group);
 }
 
 int MPI_Comm_size(MPI_Comm comm, int *size) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_size(split_comm, size);
+  return PMPI_Comm_size(correct_comm, size);
 }
 
 int MPI_Comm_rank(MPI_Comm comm, int *rank) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_rank(split_comm, rank);
+  return PMPI_Comm_rank(correct_comm, rank);
 }
 
 int MPI_Comm_compare(MPI_Comm comm1, MPI_Comm comm2, int *result) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm1;
-  SwitchWorldComm(&comm1, &split_comm1);
+  MPI_Comm correct_comm1 = GetCorrectComm(comm1);
 
-  MPI_Comm split_comm2;
-  SwitchWorldComm(&comm2, &split_comm2);
+  MPI_Comm correct_comm2 = GetCorrectComm(comm2);
 
-  return PMPI_Comm_compare(split_comm1, split_comm2, result);
+  return PMPI_Comm_compare(correct_comm1, correct_comm2, result);
 }
 
 int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_dup(split_comm, newcomm);
+  return PMPI_Comm_dup(correct_comm, newcomm);
 }
 
 int MPI_Comm_dup_with_info(MPI_Comm comm, MPI_Info info, MPI_Comm *newcomm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_dup_with_info(split_comm, info, newcomm);
+  return PMPI_Comm_dup_with_info(correct_comm, info, newcomm);
 }
 
 int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_create(split_comm, group, newcomm);
+  return PMPI_Comm_create(correct_comm, group, newcomm);
 }
 
 int MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_split(split_comm, color, key, newcomm);
+  return PMPI_Comm_split(correct_comm, color, key, newcomm);
 }
 
-// Ehhh...
+// Not needed, shouldn't ever free MPI_COMM_WORLD
 int MPI_Comm_free(MPI_Comm *comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(comm, &split_comm);
-
-  return PMPI_Comm_free(&split_comm);
+  return PMPI_Comm_free(comm);
 }
 
 int MPI_Comm_test_inter(MPI_Comm comm, int *flag) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_test_inter(split_comm, flag);
+  return PMPI_Comm_test_inter(correct_comm, flag);
 }
 
 int MPI_Comm_remote_size(MPI_Comm comm, int *size) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_remote_size(split_comm, size);
+  return PMPI_Comm_remote_size(correct_comm, size);
 }
 
 int MPI_Comm_remote_group(MPI_Comm comm, MPI_Group *group) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_remote_group(split_comm, group);
+  return PMPI_Comm_remote_group(correct_comm, group);
 }
 
 int MPI_Intercomm_create(MPI_Comm local_comm, int local_leader,
@@ -614,242 +711,214 @@ int MPI_Intercomm_create(MPI_Comm local_comm, int local_leader,
                        MPI_Comm *newintercomm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm local_split_comm;
-  SwitchWorldComm(&local_comm, &local_split_comm);
+  MPI_Comm correct_local_comm = GetCorrectComm(local_comm);
+  MPI_Comm correct_peer_comm = GetCorrectComm(peer_comm);
 
-  MPI_Comm peer_split_comm;
-  SwitchWorldComm(&peer_comm, &peer_split_comm);
-
-  return PMPI_Intercomm_create(local_split_comm, local_leader,
-                               peer_split_comm, remote_leader, tag,
+  return PMPI_Intercomm_create(correct_local_comm, local_leader,
+                               correct_peer_comm, remote_leader, tag,
                                newintercomm);
 }
 
 int MPI_Intercomm_merge(MPI_Comm intercomm, int high, MPI_Comm *newintracomm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&intercomm, &split_comm);
+  MPI_Comm correct_intercomm = GetCorrectComm(intercomm);
 
-  return PMPI_Intercomm_merge(split_comm, high, newintracomm);
+  return PMPI_Intercomm_merge(correct_intercomm, high, newintracomm);
 }
 
 int MPI_Attr_put(MPI_Comm comm, int keyval, void *attribute_val) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Attr_put(split_comm, keyval, attribute_val);
+  return PMPI_Attr_put(correct_comm, keyval, attribute_val);
 }
 
 int MPI_Attr_get(MPI_Comm comm, int keyval, void *attribute_val, int *flag) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Attr_get(split_comm, keyval, attribute_val, flag);
+  return PMPI_Attr_get(correct_comm, keyval, attribute_val, flag);
 }
 
 int MPI_Attr_delete(MPI_Comm comm, int keyval) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Attr_delete(split_comm, keyval);
+  return PMPI_Attr_delete(correct_comm, keyval);
 }
 
 int MPI_Topo_test(MPI_Comm comm, int *status) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Topo_test(split_comm, status);
+  return PMPI_Topo_test(correct_comm, status);
 }
 
 int MPI_Cart_create(MPI_Comm comm_old, int ndims, const int dims[],
                     const int periods[], int reorder, MPI_Comm *comm_cart) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm_old, &split_comm);
+  MPI_Comm correct_comm_old = GetCorrectComm(comm_old);
 
-  return PMPI_Cart_create(split_comm, ndims, dims, periods, reorder, comm_cart);
+  return PMPI_Cart_create(correct_comm_old, ndims, dims, periods, reorder, comm_cart);
 }
 int MPI_Graph_create(MPI_Comm comm_old, int nnodes, const int indx[],
                      const int edges[], int reorder, MPI_Comm *comm_graph) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm_old, &split_comm);
+  MPI_Comm correct_comm_old = GetCorrectComm(comm_old);
 
-  return PMPI_Graph_create(split_comm, nnodes, indx, edges, reorder, comm_graph);
+  return PMPI_Graph_create(correct_comm_old, nnodes, indx, edges, reorder, comm_graph);
 }
 
 int MPI_Graphdims_get(MPI_Comm comm, int *nnodes, int *nedges) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Graphdims_get(split_comm, nnodes, nedges);
+  return PMPI_Graphdims_get(correct_comm, nnodes, nedges);
 }
 
 int MPI_Graph_get(MPI_Comm comm, int maxindex, int maxedges, int indx[], int edges[]) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Graph_get(split_comm, maxindex, maxedges, indx, edges);
+  return PMPI_Graph_get(correct_comm, maxindex, maxedges, indx, edges);
 }
 
 int MPI_Cartdim_get(MPI_Comm comm, int *ndims) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Cartdim_get(split_comm, ndims);
+  return PMPI_Cartdim_get(correct_comm, ndims);
 }
 
 int MPI_Cart_get(MPI_Comm comm, int maxdims, int dims[], int periods[], int coords[]) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Cart_get(split_comm, maxdims, dims, periods, coords);
+  return PMPI_Cart_get(correct_comm, maxdims, dims, periods, coords);
 }
 
 int MPI_Cart_rank(MPI_Comm comm, const int coords[], int *rank) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Cart_rank(split_comm, coords, rank);
+  return PMPI_Cart_rank(correct_comm, coords, rank);
 }
 
 int MPI_Cart_coords(MPI_Comm comm, int rank, int maxdims, int coords[]) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Cart_coords(split_comm, rank, maxdims, coords);
+  return PMPI_Cart_coords(correct_comm, rank, maxdims, coords);
 }
 
 int MPI_Graph_neighbors_count(MPI_Comm comm, int rank, int *nneighbors) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Graph_neighbors_count(split_comm, rank, nneighbors);
+  return PMPI_Graph_neighbors_count(correct_comm, rank, nneighbors);
 }
 
 int MPI_Graph_neighbors(MPI_Comm comm, int rank, int maxneighbors, int neighbors[]) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Graph_neighbors(split_comm, rank, maxneighbors, neighbors);
+  return PMPI_Graph_neighbors(correct_comm, rank, maxneighbors, neighbors);
 }
 
 int MPI_Cart_shift(MPI_Comm comm, int direction, int disp, int *rank_source, int *rank_dest) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Cart_shift(split_comm, direction, disp, rank_source, rank_dest);
+  return PMPI_Cart_shift(correct_comm, direction, disp, rank_source, rank_dest);
 }
 int MPI_Cart_sub(MPI_Comm comm, const int remain_dims[], MPI_Comm *newcomm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Cart_sub(split_comm, remain_dims, newcomm);
+  return PMPI_Cart_sub(correct_comm, remain_dims, newcomm);
 }
 
 int MPI_Cart_map(MPI_Comm comm, int ndims, const int dims[], const int periods[], int *newrank) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Cart_map(split_comm, ndims, dims, periods, newrank);
+  return PMPI_Cart_map(correct_comm, ndims, dims, periods, newrank);
 }
 
 int MPI_Graph_map(MPI_Comm comm, int nnodes, const int indx[], const int edges[], int *newrank) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Graph_map(split_comm, nnodes, indx, edges, newrank);
+  return PMPI_Graph_map(correct_comm, nnodes, indx, edges, newrank);
 }
 
 int MPI_Errhandler_set(MPI_Comm comm, MPI_Errhandler errhandler) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Errhandler_set(split_comm, errhandler);
+  return PMPI_Errhandler_set(correct_comm, errhandler);
 }
 
 int MPI_Errhandler_get(MPI_Comm comm, MPI_Errhandler *errhandler) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Errhandler_get(split_comm, errhandler);
+  return PMPI_Errhandler_get(correct_comm, errhandler);
 }
 
 int MPI_Abort(MPI_Comm comm, int errorcode) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Abort(split_comm, errorcode);
+  return PMPI_Abort(correct_comm, errorcode);
 }
 
+/*
 int MPI_DUP_FN(MPI_Comm comm, int key, void *extra,
         void *attrin, void *attrout, int *flag) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_DUP_FN(split_comm, key, extra, attrin, attrout, flag);
+  return PMPI_DUP_FN(correct_comm, key, extra, attrin, attrout, flag);
 }
+*/
 
 int MPI_Comm_connect(const char *port_name, MPI_Info info, int root, MPI_Comm comm,
                      MPI_Comm *newcomm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_connect(port_name, info ,root, split_comm, newcomm);
+  return PMPI_Comm_connect(port_name, info ,root, correct_comm, newcomm);
 }
 
+// Not needed, shouldn't ever free MPI_COMM_WORLD
 int MPI_Comm_disconnect(MPI_Comm *comm) {
   DEBUG_PRINT("Wrapped!\n");
-
-  MPI_Comm split_comm;
-  SwitchWorldComm(comm, &split_comm);
-
-  return PMPI_Comm_disconnect(&split_comm);
+  return PMPI_Comm_disconnect(comm);
 }
 
 int MPI_Comm_spawn(const char *command, char *argv[], int maxprocs, MPI_Info info,
@@ -857,11 +926,10 @@ int MPI_Comm_spawn(const char *command, char *argv[], int maxprocs, MPI_Info inf
                   int array_of_errcodes[]) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Comm_spawn(command, argv, maxprocs, info,
-                         root, split_comm, intercomm, array_of_errcodes);
+                         root, correct_comm, intercomm, array_of_errcodes);
 }
 int MPI_Comm_spawn_multiple(int count, char *array_of_commands[],
                           char **array_of_argv[], const int array_of_maxprocs[],
@@ -869,142 +937,127 @@ int MPI_Comm_spawn_multiple(int count, char *array_of_commands[],
                           MPI_Comm *intercomm, int array_of_errcodes[]) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Comm_spawn_multiple(count, array_of_commands,
                             array_of_argv, array_of_maxprocs,
-                            array_of_info, root, split_comm,
+                            array_of_info, root, correct_comm,
                             intercomm, array_of_errcodes);
 }
 
 int MPI_Comm_set_info(MPI_Comm comm, MPI_Info info) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_set_info(split_comm, info);
+  return PMPI_Comm_set_info(correct_comm, info);
 }
 
 int MPI_Comm_get_info(MPI_Comm comm, MPI_Info *info) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_get_info(split_comm, info);
+  return PMPI_Comm_get_info(correct_comm, info);
 }
 
 int MPI_Win_create(void *base, MPI_Aint size, int disp_unit, MPI_Info info,
                   MPI_Comm comm, MPI_Win *win) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Win_create(base, size, disp_unit, info, split_comm, win);
+  return PMPI_Win_create(base, size, disp_unit, info, correct_comm, win);
 }
 
 int MPI_Win_allocate(MPI_Aint size, int disp_unit, MPI_Info info,
                   MPI_Comm comm, void *baseptr, MPI_Win *win) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Win_allocate(size, disp_unit, info, split_comm, baseptr, win);
+  return PMPI_Win_allocate(size, disp_unit, info, correct_comm, baseptr, win);
 }
 
 int MPI_Win_allocate_shared(MPI_Aint size, int disp_unit, MPI_Info info, MPI_Comm comm,
                              void *baseptr, MPI_Win *win) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Win_allocate_shared(size, disp_unit, info, split_comm, baseptr, win);
+  return PMPI_Win_allocate_shared(size, disp_unit, info, correct_comm, baseptr, win);
 }
 
 int MPI_Win_create_dynamic(MPI_Info info, MPI_Comm comm, MPI_Win *win) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Win_create_dynamic(info, split_comm, win);
+  return PMPI_Win_create_dynamic(info, correct_comm, win);
 }
 
 int MPI_Comm_call_errhandler(MPI_Comm comm, int errorcode) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_call_errhandler(split_comm, errorcode);
+  return PMPI_Comm_call_errhandler(correct_comm, errorcode);
 }
 
 int MPI_Comm_delete_attr(MPI_Comm comm, int comm_keyval) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_delete_attr(split_comm, comm_keyval);
+  return PMPI_Comm_delete_attr(correct_comm, comm_keyval);
 }
 
 int MPI_Comm_get_attr(MPI_Comm comm, int comm_keyval, void *attribute_val, int *flag) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_get_attr(split_comm, comm_keyval, attribute_val, flag);
+  return PMPI_Comm_get_attr(correct_comm, comm_keyval, attribute_val, flag);
 }
 
 int MPI_Comm_get_name(MPI_Comm comm, char *comm_name, int *resultlen) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_get_name(split_comm, comm_name, resultlen);
+  return PMPI_Comm_get_name(correct_comm, comm_name, resultlen);
 }
 
 int MPI_Comm_set_attr(MPI_Comm comm, int comm_keyval, void *attribute_val) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_set_attr(split_comm, comm_keyval, attribute_val);
+  return PMPI_Comm_set_attr(correct_comm, comm_keyval, attribute_val);
 }
 
 int MPI_Comm_set_name(MPI_Comm comm, const char *comm_name) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_set_name(split_comm, comm_name);
+  return PMPI_Comm_set_name(correct_comm, comm_name);
 }
 
 int MPI_Comm_get_errhandler(MPI_Comm comm, MPI_Errhandler *errhandler) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_get_errhandler(split_comm, errhandler);
+  return PMPI_Comm_get_errhandler(correct_comm, errhandler);
 }
 
 int MPI_Comm_set_errhandler(MPI_Comm comm, MPI_Errhandler errhandler) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_set_errhandler(split_comm, errhandler);
+  return PMPI_Comm_set_errhandler(correct_comm, errhandler);
 }
 
 int MPI_Reduce_scatter_block(const void *sendbuf, void *recvbuf,
@@ -1012,11 +1065,10 @@ int MPI_Reduce_scatter_block(const void *sendbuf, void *recvbuf,
                              MPI_Datatype datatype, MPI_Op op, MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Reduce_scatter_block(sendbuf, recvbuf, recvcount,
-                                   datatype, op, split_comm);
+                                   datatype, op, correct_comm);
 }
 
 int MPI_Dist_graph_create_adjacent(MPI_Comm comm_old,
@@ -1028,10 +1080,9 @@ int MPI_Dist_graph_create_adjacent(MPI_Comm comm_old,
 
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm_old, &split_comm);
+  MPI_Comm correct_comm_old = GetCorrectComm(comm_old);
 
-  return PMPI_Dist_graph_create_adjacent(split_comm, indegree, sources,
+  return PMPI_Dist_graph_create_adjacent(correct_comm_old, indegree, sources,
                                          sourceweights, outdegree, destinations,
                                          destweights, info, reorder, comm_dist_graph);
 
@@ -1043,20 +1094,18 @@ int MPI_Dist_graph_create(MPI_Comm comm_old, int n, const int sources[],
                           MPI_Info info, int reorder, MPI_Comm *comm_dist_graph) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm_old, &split_comm);
+  MPI_Comm correct_comm_old = GetCorrectComm(comm_old);
 
-  return PMPI_Dist_graph_create(split_comm, n, sources, degrees, destinations,
+  return PMPI_Dist_graph_create(correct_comm_old, n, sources, degrees, destinations,
                                 weights, info, reorder, comm_dist_graph);
 }
 
 int MPI_Dist_graph_neighbors_count(MPI_Comm comm, int *indegree, int *outdegree, int *weighted) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Dist_graph_neighbors_count(split_comm, indegree, outdegree, weighted);
+  return PMPI_Dist_graph_neighbors_count(correct_comm, indegree, outdegree, weighted);
 }
 
 int MPI_Dist_graph_neighbors(MPI_Comm comm,
@@ -1064,56 +1113,50 @@ int MPI_Dist_graph_neighbors(MPI_Comm comm,
                              int maxoutdegree, int destinations[], int destweights[]) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Dist_graph_neighbors(split_comm, maxindegree, sources, sourceweights,
+  return PMPI_Dist_graph_neighbors(correct_comm, maxindegree, sources, sourceweights,
                                    maxoutdegree, destinations, destweights);
 }
 
 int MPI_Improbe(int source, int tag, MPI_Comm comm, int *flag, MPI_Message *message, MPI_Status *status) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Improbe(source, tag, split_comm, flag, message, status);
+  return PMPI_Improbe(source, tag, correct_comm, flag, message, status);
 }
 
 int MPI_Mprobe(int source, int tag, MPI_Comm comm, MPI_Message *message, MPI_Status *status) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Mprobe(source, tag, split_comm, message, status);
+  return PMPI_Mprobe(source, tag, correct_comm, message, status);
 }
 
 int MPI_Comm_idup(MPI_Comm comm, MPI_Comm *newcomm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_idup(split_comm, newcomm, request);
+  return PMPI_Comm_idup(correct_comm, newcomm, request);
 }
 
 int MPI_Ibarrier(MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Ibarrier(split_comm, request);
+  return PMPI_Ibarrier(correct_comm, request);
 }
 
 int MPI_Ibcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Ibcast(buffer, count, datatype, root, split_comm, request);
+  return PMPI_Ibcast(buffer, count, datatype, root, correct_comm, request);
 }
 
 int MPI_Igather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
@@ -1121,11 +1164,10 @@ int MPI_Igather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                 int root, MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Igather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype,
-                      root, split_comm, request);
+                      root, correct_comm, request);
 }
 
 int MPI_Igatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
@@ -1133,11 +1175,10 @@ int MPI_Igatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void
                  MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Igatherv(sendbuf, sendcount, sendtype, recvbuf,
-                       recvcounts, displs, recvtype, root, split_comm, request);
+                       recvcounts, displs, recvtype, root, correct_comm, request);
 }
 
 int MPI_Iscatter(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
@@ -1145,11 +1186,10 @@ int MPI_Iscatter(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                  MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Iscatter(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype,
-                       root, split_comm, request);
+                       root, correct_comm, request);
 }
 
 int MPI_Iscatterv(const void *sendbuf, const int sendcounts[], const int displs[],
@@ -1157,11 +1197,10 @@ int MPI_Iscatterv(const void *sendbuf, const int sendcounts[], const int displs[
                   int root, MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Iscatterv(sendbuf, sendcounts, displs, sendtype, recvbuf, recvcount, recvtype,
-                       root, split_comm, request);
+                       root, correct_comm, request);
 }
 
 int MPI_Iallgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
@@ -1169,11 +1208,10 @@ int MPI_Iallgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                    MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Iallgather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype,
-                         split_comm, request);
+                         correct_comm, request);
 }
 
 int MPI_Iallgatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, void *recvbuf,
@@ -1181,11 +1219,10 @@ int MPI_Iallgatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype, v
                     MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Iallgatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs, recvtype,
-                          split_comm, request);
+                          correct_comm, request);
 }
 
 int MPI_Ialltoall(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
@@ -1193,11 +1230,10 @@ int MPI_Ialltoall(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                   MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Ialltoall(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype,
-                        split_comm, request);
+                        correct_comm, request);
 }
 
 int MPI_Ialltoallv(const void *sendbuf, const int sendcounts[], const int sdispls[],
@@ -1205,11 +1241,10 @@ int MPI_Ialltoallv(const void *sendbuf, const int sendcounts[], const int sdispl
                    const int rdispls[], MPI_Datatype recvtype, MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Ialltoallv(sendbuf, sendcounts, sdispls, sendtype, recvbuf, recvcounts,
-                         rdispls, recvtype, split_comm, request);
+                         rdispls, recvtype, correct_comm, request);
 }
 
 int MPI_Ialltoallw(const void *sendbuf, const int sendcounts[], const int sdispls[],
@@ -1218,21 +1253,19 @@ int MPI_Ialltoallw(const void *sendbuf, const int sendcounts[], const int sdispl
                    MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Ialltoallw(sendbuf, sendcounts, sdispls, sendtypes, recvbuf, recvcounts,
-                         rdispls, recvtypes, split_comm, request);
+                         rdispls, recvtypes, correct_comm, request);
 }
 
 int MPI_Ireduce(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                 MPI_Op op, int root, MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Ireduce(sendbuf, recvbuf, count, datatype, op, root, split_comm, request);
+  return PMPI_Ireduce(sendbuf, recvbuf, count, datatype, op, root, correct_comm, request);
 }
 
 int MPI_Iallreduce(const void *sendbuf, void *recvbuf, int count,
@@ -1240,20 +1273,18 @@ int MPI_Iallreduce(const void *sendbuf, void *recvbuf, int count,
                    MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Iallreduce(sendbuf, recvbuf, count, datatype, op, comm, request);
+  return PMPI_Iallreduce(sendbuf, recvbuf, count, datatype, op, correct_comm, request);
 }
 
 int MPI_Ireduce_scatter(const void *sendbuf, void *recvbuf, const int recvcounts[],
                         MPI_Datatype datatype, MPI_Op op, MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Ireduce_scatter(sendbuf, recvbuf, recvcounts, datatype, op, split_comm, request);
+  return PMPI_Ireduce_scatter(sendbuf, recvbuf, recvcounts, datatype, op, correct_comm, request);
 }
 
 int MPI_Ireduce_scatter_block(const void *sendbuf, void *recvbuf,
@@ -1262,30 +1293,27 @@ int MPI_Ireduce_scatter_block(const void *sendbuf, void *recvbuf,
                               MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Ireduce_scatter_block(sendbuf, recvbuf, recvcount, datatype, op, split_comm, request);
+  return PMPI_Ireduce_scatter_block(sendbuf, recvbuf, recvcount, datatype, op, correct_comm, request);
 }
 
 int MPI_Iscan(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
               MPI_Op op, MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Iscan(sendbuf, recvbuf, count, datatype, op, split_comm, request);
+  return PMPI_Iscan(sendbuf, recvbuf, count, datatype, op, correct_comm, request);
 }
 
 int MPI_Iexscan(const void *sendbuf, void *recvbuf, int count, MPI_Datatype datatype,
                 MPI_Op op, MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Iexscan(sendbuf, recvbuf, count, datatype, op, split_comm, request);
+  return PMPI_Iexscan(sendbuf, recvbuf, count, datatype, op, correct_comm, request);
 }
 
 int MPI_Ineighbor_allgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
@@ -1293,11 +1321,10 @@ int MPI_Ineighbor_allgather(const void *sendbuf, int sendcount, MPI_Datatype sen
                             MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Ineighbor_allgather(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype,
-                                  split_comm, request);
+                                  correct_comm, request);
 }
 
 int MPI_Ineighbor_allgatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
@@ -1305,11 +1332,10 @@ int MPI_Ineighbor_allgatherv(const void *sendbuf, int sendcount, MPI_Datatype se
                              MPI_Datatype recvtype, MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Ineighbor_allgatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs,
-                                   recvtype, split_comm, request);
+                                   recvtype, correct_comm, request);
 }
 
 int MPI_Ineighbor_alltoall(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
@@ -1317,11 +1343,10 @@ int MPI_Ineighbor_alltoall(const void *sendbuf, int sendcount, MPI_Datatype send
                            MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Ineighbor_alltoall(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype,
-                                 split_comm, request);
+                                 correct_comm, request);
 }
 
 int MPI_Ineighbor_alltoallv(const void *sendbuf, const int sendcounts[], const int sdispls[],
@@ -1329,11 +1354,10 @@ int MPI_Ineighbor_alltoallv(const void *sendbuf, const int sendcounts[], const i
                             const int rdispls[], MPI_Datatype recvtype, MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Ineighbor_alltoallv(sendbuf, sendcounts, sdispls, sendtype, recvbuf, recvcounts,
-                           rdispls, recvtype, split_comm, request);
+                           rdispls, recvtype, correct_comm, request);
 }
 
 int MPI_Ineighbor_alltoallw(const void *sendbuf, const int sendcounts[], const MPI_Aint sdispls[],
@@ -1342,22 +1366,20 @@ int MPI_Ineighbor_alltoallw(const void *sendbuf, const int sendcounts[], const M
                             MPI_Comm comm, MPI_Request *request) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Ineighbor_alltoallw(sendbuf, sendcounts, sdispls, sendtypes, recvbuf, recvcounts,
-                                  rdispls, recvtypes, split_comm, request);
+                                  rdispls, recvtypes, correct_comm, request);
 }
 
 int MPI_Neighbor_allgather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                            void *recvbuf, int recvcount, MPI_Datatype recvtype, MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Neighbor_allgather(sendbuf, sendcount, sendtype, recvbuf, recvcount,
-                                 recvtype, split_comm);
+                                 recvtype, correct_comm);
 }
 
 int MPI_Neighbor_allgatherv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
@@ -1365,21 +1387,19 @@ int MPI_Neighbor_allgatherv(const void *sendbuf, int sendcount, MPI_Datatype sen
                             MPI_Datatype recvtype, MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Neighbor_allgatherv(sendbuf, sendcount, sendtype, recvbuf, recvcounts, displs,
-                                  recvtype, split_comm);
+                                  recvtype, correct_comm);
 }
 
 int MPI_Neighbor_alltoall(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
                           void *recvbuf, int recvcount, MPI_Datatype recvtype, MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Neighbor_alltoall(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, split_comm);
+  return PMPI_Neighbor_alltoall(sendbuf, sendcount, sendtype, recvbuf, recvcount, recvtype, correct_comm);
 }
 
 int MPI_Neighbor_alltoallv(const void *sendbuf, const int sendcounts[], const int sdispls[],
@@ -1387,11 +1407,10 @@ int MPI_Neighbor_alltoallv(const void *sendbuf, const int sendcounts[], const in
                            const int rdispls[], MPI_Datatype recvtype, MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPI_Neighbor_alltoallv(sendbuf, sendcounts, sdispls, sendtype, recvbuf, recvcounts,
-                                 rdispls, recvtype, split_comm);
+                                 rdispls, recvtype, correct_comm);
 }
 
 int MPI_Neighbor_alltoallw(const void *sendbuf, const int sendcounts[], const MPI_Aint sdispls[],
@@ -1399,52 +1418,46 @@ int MPI_Neighbor_alltoallw(const void *sendbuf, const int sendcounts[], const MP
                            const MPI_Aint rdispls[], const MPI_Datatype recvtypes[], MPI_Comm comm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Neighbor_alltoallw(sendbuf, sendcounts, sdispls, sendtypes, recvbuf, recvcounts, rdispls, recvtypes, split_comm);
+  return PMPI_Neighbor_alltoallw(sendbuf, sendcounts, sdispls, sendtypes, recvbuf, recvcounts, rdispls, recvtypes, correct_comm);
 }
 
 int MPI_Comm_split_type(MPI_Comm comm, int split_type, int key, MPI_Info info, MPI_Comm *newcomm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_split_type(split_comm, split_type, key, info, newcomm);
+  return PMPI_Comm_split_type(correct_comm, split_type, key, info, newcomm);
 }
 
 int MPI_Comm_create_group(MPI_Comm comm, MPI_Group group, int tag, MPI_Comm *newcomm) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPI_Comm_create_group(split_comm, group, tag, newcomm);
+  return PMPI_Comm_create_group(correct_comm, group, tag, newcomm);
 }
 
 int MPIX_Comm_group_failed(MPI_Comm comm, MPI_Group *failed_group) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPIX_Comm_group_failed(split_comm, failed_group);
+  return PMPIX_Comm_group_failed(correct_comm, failed_group);
 }
 
 int MPIX_Comm_remote_group_failed(MPI_Comm comm, MPI_Group *failed_group) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPIX_Comm_remote_group_failed(split_comm, failed_group);
+  return PMPIX_Comm_remote_group_failed(correct_comm, failed_group);
 }
 int MPIX_Comm_reenable_anysource(MPI_Comm comm, MPI_Group *failed_group) {
   DEBUG_PRINT("Wrapped!\n");
 
-  MPI_Comm split_comm;
-  SwitchWorldComm(&comm, &split_comm);
+  MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  return PMPIX_Comm_reenable_anysource(split_comm, failed_group);
+  return PMPIX_Comm_reenable_anysource(correct_comm, failed_group);
 }

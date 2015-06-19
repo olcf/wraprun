@@ -1,21 +1,29 @@
 project(LibSplit)
-cmake_minimum_required(VERSION 2.8.9)
+cmake_minimum_required(VERSION 3.1)
 
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
   add_definitions(-DDEBUG=1)
 endif()
 
-file(GLOB SRC_FILES src/*.c src/*.cc)
-
-add_library(split SHARED ${SRC_FILES})
+# Shared split library
+add_library(split SHARED src/split.c)
 set_target_properties(split PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
+
+# Static split library
+add_library(split_static STATIC src/split.c)
+set_target_properties(split_static PROPERTIES OUTPUT_NAME split)
 
 # Hack as the PIC option for set_target_properies doesn't appear to work for CCE
 if(CMAKE_C_COMPILER_ID MATCHES "Cray")
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fPIC")
 endif()
 
+# Serial application wrapper
+add_executable(serial src/serial_wrapper.c)
+
 install(TARGETS split DESTINATION lib)
+install(TARGETS split_static DESTINATION lib)
+install(TARGETS serial DESTINATION bin)
 
-file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/bin DESTINATION ${CMAKE_INSTALL_PREFIX})
-
+file(GLOB script_files ${CMAKE_CURRENT_SOURCE_DIR}/bin/*)
+install(FILES ${script_files} DESTINATION "${CMAKE_INSTALL_PREFIX}/bin")

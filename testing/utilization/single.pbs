@@ -2,13 +2,13 @@
 #PBS -A stf007
 #PBS -q batch
 #PBS -l walltime=01:00:00
-#PBS -o util_baseline.$PBS_JOBID.out.log
-#PBS -N util_baseline
+#PBS -o util_single.$PBS_JOBID.out.log
+#PBS -N util_single
 #PBS -j oe
 
 PPN=16
 
-echo 'Testing resources used by backgrounded aprun calls.'
+echo "Testing resources used by a single SPSD aprun call."
 echo "Host: $HOST"
 echo "Nodes: $PBS_NUM_NODES"
 echo "PPN: $PPN"
@@ -20,9 +20,9 @@ cd $RUNDIR
 
 PROG=./a.out
 
-for i in `seq 1 $PBS_NUM_NODES`; do
-  aprun -n $PPN -N $PPN $PROG &
-done
+PES=$(($PBS_NUM_NODES * $PPN))
+
+aprun -n $PES -N $PPN $PROG &
 
 sleep 30
 
@@ -35,4 +35,4 @@ echo "$PROCS" | grep -e '^aprun\s' |  awk '{size += $4; rss += $5} END {print si
 
 wait
 
-mv $PSLOG $PBS_O_WORKDIR/util_baseline.$PBS_JOBID.mem.log
+mv $PSLOG $PBS_O_WORKDIR/util_single.$PBS_JOBID.mem.log
