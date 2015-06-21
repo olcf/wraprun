@@ -56,7 +56,7 @@ static void GetRankParamsFromFile(const int rank, int *color, char *work_dir)
 
   for(int i=0; i<=rank; i++) {
     char_count = getline(&line, &length, file);
-    if(read == -1) {
+    if(char_count == -1) {
       printf("Error reading rank %d info from %s\n", rank, file_name);
       exit(EXIT_FAILURE);
     }
