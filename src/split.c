@@ -27,31 +27,75 @@ THE SOFTWARE.
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
-#include "debug.h"
+#include "print_macros.h"
 #include "mpi.h"
 
 static MPI_Comm MPI_COMM_SPLIT;
 
-// Returns color integer fetched from WRAPRUN_{rank}
-static void GetRankParams(const int rank, int *color, char *work_dir)
-{
-  // construct environment variable WRAPRUN_${RANK}
-  // var has format WRAPRUN_${RANK}= color work_dir
-  char rank_var[128];
-  sprintf(rank_var, "WRAPRUN_%d", rank);
+// Parse color, work_dir, env_vars from wraprun file
+static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
+                                  char *env_vars) {
+  // Get file name from environment variable
+  char *file_name = getenv("WRAPRUN_FILE");
+  if(file_name == NULL)
+    EXIT_PRINT("%s environment variable not set, exiting!\n", "WRAPRUN_FILE");
 
-  // Get pointer to environment variable character array
-  char *char_var = getenv(rank_var);
-  if(char_var == NULL) {
-    printf("%s environment variable not set, exiting!\n", char_var);
-    exit(EXIT_FAILURE);
+  // Search file and read in rank'th line of file
+  FILE *file = NULL;
+  char *line = NULL;
+  size_t length = 0;
+  ssize_t char_count;
+
+  file = fopen(file_name, "r");
+  if(file == NULL)
+    EXIT_PRINT("Can't open %s\n", file_name);
+
+  for(int line_num=0; line_num<=rank; ++line_num) {
+    char_count = getline(&line, &length, file);
+    if(char_count == -1)
+      EXIT_PRINT("Error reading rank %d info from %s\n", rank, file_name);
   }
 
   // Extract parameters
-  sscanf(char_var, "%d %s", color, work_dir);
+  int num_params = sscanf(line, "%d %s %s", color, work_dir, env_vars);
+  if(num_params == EOF)
+    EXIT_PRINT("Error parsing file line\n");
+
+  free(line);
+  free(file);
 }
 
-// Hijack to create MPI_COMM_SPLIT
+void SetSplitCommunicator(int color) {
+  int err = PMPI_Comm_split(MPI_COMM_WORLD, color, 0, &MPI_COMM_SPLIT);
+  if(err != MPI_SUCCESS)
+    EXIT_PRINT("Failed to split communicator: %d!\n", err);
+}
+
+void SetWorkingDirectory(char *work_dir) {
+  int err = chdir(work_dir);
+  if(err)
+    EXIT_PRINT("Failed to change working directory: %s!\n", strerror(errno));
+}
+
+// Set environment variables in env_vars string
+// with format "key1=value2;key2=value2"
+static void SetEnvironmentVaribles(char *env_vars) {
+  char *token;
+
+  while ((token = strsep(&env_vars, ";")) != NULL) {
+    char key[1024];
+    char value[1024];
+    int num_components = sscanf(token, "%s=%s", key, value);
+    if(num_components == 2) {
+      int err = setenv(key, value, 1);
+      if(err)
+        EXIT_PRINT("Error setting environment variable: %s\n", strerror(errno));
+    }
+    else
+      EXIT_PRINT("Error parsing environment_variables\n");
+  }
+}
+
 int MPI_Init(int *argc, char ***argv) {
   DEBUG_PRINT("Wrapped!\n");
 
@@ -61,32 +105,28 @@ int MPI_Init(int *argc, char ***argv) {
   PMPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
   int color;
-  char work_dir[1024];
-  GetRankParams(rank, &color, work_dir);
+  char *work_dir = calloc(2048, sizeof(char));
+  char *env_vars = calloc(10240, sizeof(char));
+  GetRankParamsFromFile(rank, &color, work_dir, env_vars);
 
-  // Split the communicator based on color
-  int err = PMPI_Comm_split(MPI_COMM_WORLD, color, 0, &MPI_COMM_SPLIT);
-  if(err != MPI_SUCCESS) {
-    printf("Failed to split communicator: %d!\n", err);
-    exit(EXIT_FAILURE);
-  }
+  SetSplitCommunicator(color);
 
-  // Change directory to work_dir
-  err = chdir(work_dir);
-  if(err) {
-    printf("Failed to change working directory: %s!\n", strerror(errno));
-    exit(EXIT_FAILURE);
-  }
+  SetWorkingDirectory(work_dir);
 
+  SetEnvironmentVaribles(env_vars);
+
+  free(work_dir);
+  free(env_vars);
   return return_value;
 }
 
 int MPI_Finalize() {
+  DEBUG_PRINT("Wrapped!\n");
+
   int err = PMPI_Comm_free(&MPI_COMM_SPLIT);
-  if(err != MPI_SUCCESS) {
-    printf("Failed to free split communicator: %d !\n", err);
-    exit(EXIT_FAILURE);
-  }
+  if(err != MPI_SUCCESS)
+    EXIT_PRINT("Failed to free split communicator: %d !\n", err);
+
   return PMPI_Finalize();
 }
 
