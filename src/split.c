@@ -32,7 +32,7 @@ THE SOFTWARE.
 
 static MPI_Comm MPI_COMM_SPLIT;
 
-// Returns color integer fetched from WRAPRUN_{rank}
+// Parse color, work_dir, env_vars from wraprun file
 static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
                                   char *env_vars) {
   // Get file name from environment variable
@@ -57,8 +57,7 @@ static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
   }
 
   // Extract parameters
-  int num_params = 0;
-  num_params = sscanf(line, "%d %s %s", color, work_dir, env_vars);
+  int num_params = sscanf(line, "%d %s %s", color, work_dir, env_vars);
   if(num_params == EOF)
     EXIT_PRINT("Error parsing file line\n");
 
@@ -66,7 +65,37 @@ static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
   free(file);
 }
 
-// Hijack to create MPI_COMM_SPLIT
+void SetSplitCommunicator(int color) {
+  int err = PMPI_Comm_split(MPI_COMM_WORLD, color, 0, &MPI_COMM_SPLIT);
+  if(err != MPI_SUCCESS)
+    EXIT_PRINT("Failed to split communicator: %d!\n", err);
+}
+
+void SetWorkingDirectory(char *work_dir) {
+  int err = chdir(work_dir);
+  if(err)
+    EXIT_PRINT("Failed to change working directory: %s!\n", strerror(errno));
+}
+
+// Set environment variables in env_vars string
+// with format "key1=value2;key2=value2"
+static void SetEnvironmentVaribles(char *env_vars) {
+  char *token;
+
+  while ((token = strsep(&env_vars, ";")) != NULL) {
+    char key[1024];
+    char value[1024];
+    int num_components = sscanf(token, "%s=%s", key, value);
+    if(num_components == 2) {
+      int err = setenv(key, value, 1);
+      if(err)
+        EXIT_PRINT("Error setting environment variable: %s\n", strerror(errno));
+    }
+    else
+      EXIT_PRINT("Error parsing environment_variables\n");
+  }
+}
+
 int MPI_Init(int *argc, char ***argv) {
   DEBUG_PRINT("Wrapped!\n");
 
@@ -76,24 +105,24 @@ int MPI_Init(int *argc, char ***argv) {
   PMPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
   int color;
-  char work_dir[1024];
-  char env_vars[2048];
+  char *work_dir = calloc(2048, sizeof(char));
+  char *env_vars = calloc(10240, sizeof(char));
   GetRankParamsFromFile(rank, &color, work_dir, env_vars);
 
-  // Split the communicator based on color
-  int err = PMPI_Comm_split(MPI_COMM_WORLD, color, 0, &MPI_COMM_SPLIT);
-  if(err != MPI_SUCCESS)
-    EXIT_PRINT("Failed to split communicator: %d!\n", err);
+  SetSplitCommunicator(color);
 
-  // Change directory to work_dir
-  err = chdir(work_dir);
-  if(err)
-    EXIT_PRINT("Failed to change working directory: %s!\n", strerror(errno));
+  SetWorkingDirectory(work_dir);
 
+  SetEnvironmentVaribles(env_vars);
+
+  free(work_dir);
+  free(env_vars);
   return return_value;
 }
 
 int MPI_Finalize() {
+  DEBUG_PRINT("Wrapped!\n");
+
   int err = PMPI_Comm_free(&MPI_COMM_SPLIT);
   if(err != MPI_SUCCESS)
     EXIT_PRINT("Failed to free split communicator: %d !\n", err);
