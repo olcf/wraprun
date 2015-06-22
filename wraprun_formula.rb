@@ -67,7 +67,7 @@ class WraprunFormula < Formula
     commands << "swap intel cray/#{$1}" if build_name =~ /cray([\d\.]+)/
 
     commands << "load dynamic-link"
-    commands << "load cmake"
+    commands << "load cmake3"
 
     commands
   end
