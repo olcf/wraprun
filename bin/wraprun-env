@@ -167,22 +167,72 @@ class Arguments(object):
                 }
         return '{aprun} {groups}'.format(**arg_strings)
 
+class WraprunError(Exception):
+    pass
 
 class Wraprun(object):
     def __init__(self):
         self.args = Arguments()
+        self.fileid = None
+        try:
+            self.job_id = os.environ["PBS_JOBID"]
+        except KeyError:
+            if self.args.wraprun.debug:
+                self.job_id = '000000'
+            else:
+                raise
         self.groups = self.args.groups
         self.env = self._update_env()
 
+    def _write_data_file(self):
+        '''Generate the data for each rank to be written to the tmp file.'''
+        if self.fileid is None:
+            self.fileid = self._set_outfile()
+        with os.fdopen(self.fileid, 'a') as f:
+            for group in self.groups:
+                for rank in group.ranks:
+                    f.write(group.env_string() + "\n")
+
+
     def _update_env(self):
         env = {}
-        for group in self.groups:
-            for rank in group.ranks:
-                name = 'WRAPRUN_{rank}'.format(
-                        rank=rank)
-                env[name] = group.env_string()
         env['LD_PRELOAD'] = self._get_preload_path()
         return env
+
+    def _discover_account(self):
+        '''Return the account string under which the parent PBS script is
+        running.'''
+        import subprocess
+        qstat = subprocess.Popen(['qstat', '-f', self.job_id], stdout=subprocess.PIPE)
+        for line in qstat.stdout.readlines():
+            if 'Account_Name' in line:
+                account = (line[19:-1]).lower()
+                break
+        else:
+            if self.args.wraprun.debug:
+                account = 'stf007'
+            else:
+                raise WraprunError("Cannot determine account name.")
+        return account
+
+    def _set_outfile(self):
+        '''Create a unique file descriptor for storing job data.'''
+        import tempfile
+        dir = os.path.join(
+                os.environ["MEMBERWORK"],
+                self._discover_account(),
+                ".wraprun")
+        try:
+            os.makedirs(dir, 0700)
+        except OSError as err:
+            if err.errno is not 17:
+                raise
+        handle, path = tempfile.mkstemp(
+                prefix='tmp{job}_'.format(job=self.job_id),
+                suffix='.wraprun',
+                dir=dir, text=True)
+        os.environ["WRAPRUN_FILE"] = path
+        return handle
 
     def _get_preload_path(self):
         if 'WRAPRUN_PRELOAD' not in os.environ.keys():
@@ -191,15 +241,14 @@ class Wraprun(object):
         return os.environ.pop('WRAPRUN_PRELOAD',
                 '/lustre/atlas/proj-shared/stf007/libsplit.so')
 
-    def env_string(self):
+    def env_strings(self):
         '''Return the set of shell-evaluable strings needed to
         set the environment.'''
         return ['{name}="{value}"'.format(name=name, value=value)
                 for name, value in sorted(self.env.items())]
 
     def eval(self):
-        for env in self.env_string():
-            print(env)
+        self._write_data_file()
         print(self.args.aprun_arg_string())
 
 
@@ -212,8 +261,8 @@ def main():
     log('INFO', 'Launching aprun in wrapped environment')
     if wraprun.args.wraprun.debug:
         log('DEBUG', 'Setting environment variables:')
-        for env in wraprun.env_string():
-            log('DEBUG', env)
+        for var in wraprun.env_strings():
+            log('DEBUG', var)
         log('DEBUG', 'Command line called:')
         log('DEBUG', wraprun.args.aprun_arg_string())
     wraprun.eval()

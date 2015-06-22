@@ -26,3 +26,4 @@
 # parent scripts.
 
 eval $(wraprun-env $*)
+rm ${WRAPRUN_FILE}
