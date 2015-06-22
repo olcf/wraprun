@@ -50,7 +50,7 @@ static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
   if(file == NULL)
     EXIT_PRINT("Can't open %s\n", file_name);
 
-  for(int i=0; i<=rank; i++) {
+  for(int line_num=0; line_num<=rank; ++line_num) {
     char_count = getline(&line, &length, file);
     if(char_count == -1)
       EXIT_PRINT("Error reading rank %d info from %s\n", rank, file_name);
