@@ -21,11 +21,11 @@ if(CMAKE_C_COMPILER_ID MATCHES "Cray")
 endif()
 
 # Serial application wrapper
-add_executable(wrap src/serial_wrapper.c)
+add_executable(serial src/serial_wrapper.c)
 
 install(TARGETS split DESTINATION lib)
 install(TARGETS split_static DESTINATION lib)
-install(TARGETS wrap DESTINATION bin)
+install(TARGETS serial DESTINATION bin)
 
 file(GLOB script_files ${CMAKE_CURRENT_SOURCE_DIR}/bin/*)
 install(FILES ${script_files} DESTINATION ${CMAKE_INSTALL_PREFIX})
