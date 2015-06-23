@@ -37,7 +37,7 @@ static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
                                   char *env_vars) {
   // Get file name from environment variable
   char *file_name = getenv("WRAPRUN_FILE");
-  if(file_name == NULL)
+  if(!file_name)
     EXIT_PRINT("%s environment variable not set, exiting!\n", "WRAPRUN_FILE");
 
   // Search file and read in rank'th line of file
@@ -47,7 +47,7 @@ static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
   ssize_t char_count;
 
   file = fopen(file_name, "r");
-  if(file == NULL)
+  if(!file)
     EXIT_PRINT("Can't open %s\n", file_name);
 
   for(int line_num=0; line_num<=rank; ++line_num) {
@@ -83,7 +83,7 @@ static void SetEnvironmentVaribles(char *env_vars) {
   char *token;
 
   // environment variables are optional
-  if(strlen(env_vars) < 0)
+  if(strlen(env_vars) == 0)
     return;
 
   while ((token = strsep(&env_vars, ";")) != NULL) {
@@ -110,8 +110,13 @@ int MPI_Init(int *argc, char ***argv) {
 
   int color;
   char *work_dir = calloc(2048, sizeof(char));
-  char *env_vars = calloc(10240, sizeof(char));
+  if(!work_dir)
+    EXIT_PRINT("Error allocating work_dir memory!\n");
+  char *env_vars = calloc(2048, sizeof(char));
+  if(!env_vars)
+    EXIT_PRINT("Error allocating env_vars memory!\n");
   env_vars[0] = '\0'; // "zero" out env_vars
+
   GetRankParamsFromFile(rank, &color, work_dir, env_vars);
 
   SetSplitCommunicator(color);
