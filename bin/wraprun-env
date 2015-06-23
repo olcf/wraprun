@@ -311,7 +311,7 @@ class Wraprun(object):
         set the environment.
         '''
         for name, value in self.env.items():
-            yield '{n}="{v}"'.format(n=name, v=value)
+            yield "{n}='{v}';".format(n=name, v=value)
 
     def eval(self):
         self._write_data_file()
