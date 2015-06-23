@@ -327,6 +327,9 @@ def main():
     wraprun = Wraprun()
     log('INFO', 'Launching aprun in wrapped environment')
     if wraprun.args.wraprun.debug:
+        log('DEBUG', 'Environment set:')
+        for env in self._env_strings():
+            log('DEBUG', env)
         log('DEBUG', 'Command line called:')
         log('DEBUG', wraprun.args.string())
     wraprun.eval()
