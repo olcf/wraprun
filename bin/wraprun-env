@@ -104,19 +104,20 @@ class Group(object):
         return var.format(**(self.wraprun.__dict__))
 
 
-
 class Arguments(object):
     '''A class to parse and encapsulate arguments to a wraprun call and it's
     underlying aprun call.'''
     REQUIRED_APRUN_ARGS = {'-b':None,}
 
     def __init__(self):
-        self.wraprun, remaining_arglist = self._parse_cli()
-        global VERBOSE
-        VERBOSE = self.wraprun.debug
-        self.groups = self._parse_group_args(remaining_arglist)
-        self.aprun_arglist = self._parse_aprun_global_args(self.groups[0])
-        
+        self._args = self._parse_cli()
+        self.groups = self._parse_groups()
+        self.aprun_arglist = self._parse_global_args(self.groups[0])
+
+    @property
+    def wraprun(self):
+        return self._args["wraprun"]
+
     def _parse_cli(self):
         '''Parse CLI arguments for wraprun specific options and aprun specific
         arguments.'''
@@ -126,44 +127,62 @@ class Arguments(object):
         cli_parser.add_argument('--w-debug', dest='debug', action='store_true',
                 help='Show debugging information.')
 
-        return cli_parser.parse_known_args()
+        args = {"wraprun": None,
+                "aprun": None,
+                "groups": None,
+                "unprocessed": None,}
+        args["wraprun"], args["unprocessed"] = cli_parser.parse_known_args()
 
-    def _parse_group_args(self, arglist):
+        # Update global flags
+        global VERBOSE
+        VERBOSE = self.wraprun.debug
+
+        return args
+
+    def _group_arglists(self):
+        arglist = self._args["unprocessed"]
+        start = 0
+        end = arglist.index(':')
+        while end in not None:
+            yield arglist[start:end]
+            start = end + 1
+            try:
+                end = arglist.index(':', start)
+            except ValueError:
+                end = None
+        yield arglist[start:]
+
+    def _parse_groups(self):
         groups = []
         total_pes = 0
-        for id, group_args in enumerate(self.find_groups(arglist)):
+        for id, group_args in enumerate(self._group_arglists()):
             group = Group(group_args, id, total_pes)
             groups.append(group)
             total_pes+=group.pes
         return groups
 
-    @staticmethod
-    def find_groups(arglist):
-        '''Given a 1D list of wraprun arguments, return a 2D list of arguments
-        grouped by respective MPMD executable block.''' 
-        return [i.split() for i in (' '.join(arglist)).split(':')]
-
-    def _parse_aprun_global_args(self, first_group):
-        aprun_arglist = ['aprun']
+    def _parse_global_args(self):
+        first_group = self.groups[0]
+        args = ['aprun']
         for arg, value in self.REQUIRED_APRUN_ARGS.items():
             if not first_group.has_arg(arg):
                 log('WARNING',
                         "Adding required aprun argument '{a}'.".format(a=arg))
-                aprun_arglist.append(arg)
+                args.append(arg)
                 if value is not None:
-                    aprun_arglist.append(arg)
-        return aprun_arglist
+                    args.append(arg)
+        return args
 
-    def group_arg_strings(self):
+    def _group_strings(self):
         return [group.arg_string() for group in self.groups]
 
-    def groups_arg_string(self):
-        return ' : '.join(self.group_arg_strings())
+    def _groups_arg_string(self):
+        return ' : '.join(self._group_strings())
 
-    def aprun_arg_string(self):
+    def string(self):
         arg_strings = {
                 'aprun': ' '.join(self.aprun_arglist),
-                'groups': self.groups_arg_string(),
+                'groups': self._groups_arg_string(),
                 }
         return '{aprun} {groups}'.format(**arg_strings)
 
@@ -173,37 +192,48 @@ class WraprunError(Exception):
 class Wraprun(object):
     def __init__(self):
         self.args = Arguments()
-        self.fileid = None
+        self.groups = self.args.groups
+
+        self.file_id = None
+        self.job_id = self._get_jobid()
+        self.env = self._set_env()
+
+    def _get_jobid(self):
+        '''Determine PBS job ID from the environment.
+        
+        If not available (for instance if called outside a PBS script), an error
+        is raised unless the script is run with debugging flags.
+        '''
         try:
-            self.job_id = os.environ["PBS_JOBID"]
-        except KeyError:
+            id = os.environ["PBS_JOBID"]
+        except: KeyError:
             if self.args.wraprun.debug:
-                self.job_id = '000000'
+                id = '000000'
             else:
                 raise
-        self.groups = self.args.groups
-        self.env = self._update_env()
+        return id
 
     def _write_data_file(self):
         '''Generate the data for each rank to be written to the tmp file.'''
-        if self.fileid is None:
-            self.fileid = self._set_outfile()
-        with os.fdopen(self.fileid, 'a') as f:
+        if self.file_id is None:
+            self.file_id = self._set_outfile()
+        with os.fdopen(self.file_id, 'a') as f:
             for group in self.groups:
                 for rank in group.ranks:
                     f.write(group.env_string() + "\n")
 
-
-    def _update_env(self):
+    def _set_env(self):
         env = {}
         env['LD_PRELOAD'] = self._get_preload_path()
         return env
 
     def _discover_account(self):
         '''Return the account string under which the parent PBS script is
-        running.'''
+        running.
+        '''
         import subprocess
-        qstat = subprocess.Popen(['qstat', '-f', self.job_id], stdout=subprocess.PIPE)
+        qstat = subprocess.Popen(
+                ['qstat', '-f', self.job_id], stdout=subprocess.PIPE)
         for line in qstat.stdout.readlines():
             if 'Account_Name' in line:
                 account = (line[19:-1]).lower()
@@ -243,20 +273,22 @@ class Wraprun(object):
 
     def env_strings(self):
         '''Return the set of shell-evaluable strings needed to
-        set the environment.'''
+        set the environment.
+        '''
         return ['{name}="{value}"'.format(name=name, value=value)
                 for name, value in sorted(self.env.items())]
 
     def eval(self):
         self._write_data_file()
-        print(self.args.aprun_arg_string())
+        for var in self.env_strings():
+            print var
+        print(self.args.string())
 
 
 def main():
-    '''Perform the sequence of steps needed to print the environment shell
-    commands.
+    '''Produces the data needed by the MPI wrapper library to run aprun flexibly
+    in MPMD mode.
     '''
-
     wraprun = Wraprun()
     log('INFO', 'Launching aprun in wrapped environment')
     if wraprun.args.wraprun.debug:
@@ -264,7 +296,7 @@ def main():
         for var in wraprun.env_strings():
             log('DEBUG', var)
         log('DEBUG', 'Command line called:')
-        log('DEBUG', wraprun.args.aprun_arg_string())
+        log('DEBUG', wraprun.args.string())
     wraprun.eval()
 
 
