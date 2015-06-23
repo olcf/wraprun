@@ -82,6 +82,10 @@ void SetWorkingDirectory(char *work_dir) {
 static void SetEnvironmentVaribles(char *env_vars) {
   char *token;
 
+  // environment variables are optional
+  if(strlen(env_vars) < 0)
+    return;
+
   while ((token = strsep(&env_vars, ";")) != NULL) {
     char key[1024];
     char value[1024];
@@ -107,6 +111,7 @@ int MPI_Init(int *argc, char ***argv) {
   int color;
   char *work_dir = calloc(2048, sizeof(char));
   char *env_vars = calloc(10240, sizeof(char));
+  env_vars[0] = '\0'; // "zero" out env_vars
   GetRankParamsFromFile(rank, &color, work_dir, env_vars);
 
   SetSplitCommunicator(color);
