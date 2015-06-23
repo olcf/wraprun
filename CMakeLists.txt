@@ -28,4 +28,4 @@ install(TARGETS split_static DESTINATION lib)
 install(TARGETS serial DESTINATION bin)
 
 file(GLOB script_files ${CMAKE_CURRENT_SOURCE_DIR}/bin/*)
-install(FILES ${script_files} DESTINATION ${CMAKE_INSTALL_PREFIX})
+install(FILES ${script_files} DESTINATION "${CMAKE_INSTALL_PREFIX}/bin")
