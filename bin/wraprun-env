@@ -249,6 +249,8 @@ class Wraprun(object):
 
     def eval(self):
         self._write_data_file()
+        for env in self.env_strings():
+            print(env)
         print(self.args.aprun_arg_string())
 
 
