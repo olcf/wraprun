@@ -11,7 +11,8 @@ if [ -z "$PBS_NUM_NODES" ]; then
   PBS_NUM_NODES=2
 fi
 
-cmd="/ccs/home/belhorn/development/wraprun/bin/wraprun-env --w-debug "
+#cmd="/ccs/home/belhorn/development/wraprun/bin/wraprun-env --w-debug "
+cmd="wraprun-env --w-debug "
 arg="-n 16 -N 16 $PROG"
 sep=" : "
 for i in `seq 1 $(($PBS_NUM_NODES-1))`; do

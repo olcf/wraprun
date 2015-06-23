@@ -233,7 +233,7 @@ class Wraprun(object):
         self._file = File(fd=None, path=None)
         self._job_id = None
         self.env = {
-                'LD_PRELOAD': self._set_preload_path(),
+                'LD_PRELOAD': self._set_preload_path() + ';',
                 'WRAPRUN_FILE': '"{0}";'.format(self.file.path),
                 }
     
