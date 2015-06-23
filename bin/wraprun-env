@@ -231,7 +231,7 @@ class Wraprun(object):
                 prefix='tmp{job}_'.format(job=self.job_id),
                 suffix='.wraprun',
                 dir=dir, text=True)
-        os.environ["WRAPRUN_FILE"] = path
+        self.env["WRAPRUN_FILE"] = path
         return handle
 
     def _get_preload_path(self):
