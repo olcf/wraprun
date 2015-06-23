@@ -110,13 +110,47 @@ class Arguments(object):
     REQUIRED_APRUN_ARGS = {'-b':None,}
 
     def __init__(self):
-        self._args = self._parse_cli()
-        self.groups = self._parse_groups()
-        self.aprun_arglist = self._parse_global_args(self.groups[0])
+        self._args = {
+                "wraprun": None,
+                "aprun": None,
+                "groups": None,
+                "unprocessed": None,
+                }
+        self._parse_cli()
+        self._parse_groups()
+        self._parse_global_args()
 
     @property
     def wraprun(self):
         return self._args["wraprun"]
+
+    @wraprun.setter
+    def wraprun(self, namespace):
+        self._args["wraprun"] = namespace
+
+    @property
+    def groups(self):
+        return self._args["groups"]
+
+    @groups.setter
+    def groups(self, group_list):
+        self._args["groups"] = group_list
+
+    @property
+    def aprun(self):
+        return self._args["aprun"]
+
+    @aprun.setter
+    def aprun(self, aprun_global_arglist):
+        self._args["aprun"] = aprun_global_arglist
+
+    @property
+    def _unprocessed(self):
+        return self._args["unprocessed"]
+
+    @_unprocessed.setter
+    def _unprocessed(self, arglist):
+        self._args["unprocessed"] = arglist
 
     def _parse_cli(self):
         '''Parse CLI arguments for wraprun specific options and aprun specific
@@ -127,23 +161,17 @@ class Arguments(object):
         cli_parser.add_argument('--w-debug', dest='debug', action='store_true',
                 help='Show debugging information.')
 
-        args = {"wraprun": None,
-                "aprun": None,
-                "groups": None,
-                "unprocessed": None,}
-        args["wraprun"], args["unprocessed"] = cli_parser.parse_known_args()
+        self.wraprun, self._unprocessed = cli_parser.parse_known_args()
 
         # Update global flags
         global VERBOSE
         VERBOSE = self.wraprun.debug
 
-        return args
-
     def _group_arglists(self):
-        arglist = self._args["unprocessed"]
+        arglist = self._unprocessed
         start = 0
         end = arglist.index(':')
-        while end in not None:
+        while end is not None:
             yield arglist[start:end]
             start = end + 1
             try:
@@ -153,13 +181,13 @@ class Arguments(object):
         yield arglist[start:]
 
     def _parse_groups(self):
-        groups = []
+        self.groups = []
+        groups = self.groups
         total_pes = 0
         for id, group_args in enumerate(self._group_arglists()):
             group = Group(group_args, id, total_pes)
             groups.append(group)
             total_pes+=group.pes
-        return groups
 
     def _parse_global_args(self):
         first_group = self.groups[0]
@@ -171,8 +199,9 @@ class Arguments(object):
                 args.append(arg)
                 if value is not None:
                     args.append(arg)
-        return args
+        self.aprun = args
 
+    # TODO: These methods need to be optimized for reduced memory use and speed.
     def _group_strings(self):
         return [group.arg_string() for group in self.groups]
 
@@ -181,7 +210,7 @@ class Arguments(object):
 
     def string(self):
         arg_strings = {
-                'aprun': ' '.join(self.aprun_arglist),
+                'aprun': ' '.join(self.aprun),
                 'groups': self._groups_arg_string(),
                 }
         return '{aprun} {groups}'.format(**arg_strings)
@@ -206,7 +235,7 @@ class Wraprun(object):
         '''
         try:
             id = os.environ["PBS_JOBID"]
-        except: KeyError:
+        except KeyError:
             if self.args.wraprun.debug:
                 id = '000000'
             else:
@@ -227,7 +256,7 @@ class Wraprun(object):
         env['LD_PRELOAD'] = self._get_preload_path()
         return env
 
-    def _discover_account(self):
+    def _get_account(self):
         '''Return the account string under which the parent PBS script is
         running.
         '''
@@ -250,7 +279,7 @@ class Wraprun(object):
         import tempfile
         dir = os.path.join(
                 os.environ["MEMBERWORK"],
-                self._discover_account(),
+                self._get_account(),
                 ".wraprun")
         try:
             os.makedirs(dir, 0700)
@@ -280,8 +309,8 @@ class Wraprun(object):
 
     def eval(self):
         self._write_data_file()
-        for var in self.env_strings():
-            print var
+        for env in self.env_strings():
+            print(env)
         print(self.args.string())
 
 
