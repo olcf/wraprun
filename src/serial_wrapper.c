@@ -24,6 +24,9 @@ THE SOFTWARE.
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <string.h>
 #include "print_macros.h"
 #include "mpi.h"
 
