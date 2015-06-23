@@ -203,7 +203,8 @@ class Arguments(object):
 
     # TODO: These methods need to be optimized for reduced memory use and speed.
     def _group_strings(self):
-        return [group.arg_string() for group in self.groups]
+        for group in self.groups:
+            yield group.arg_string()
 
     def _groups_arg_string(self):
         return ' : '.join(self._group_strings())
@@ -218,43 +219,37 @@ class Arguments(object):
 class WraprunError(Exception):
     pass
 
+from collections import namedtuple
+File = namedtuple('File', ['fd', 'path'])
+
 class Wraprun(object):
     def __init__(self):
         self.args = Arguments()
         self.groups = self.args.groups
 
-        self.file_id = None
-        self.job_id = self._get_jobid()
-        self.env = self._set_env()
-
-    def _get_jobid(self):
+        self._file = File(fd=None, path=None)
+        self._job_id = None
+        self.env = {
+                'LD_PRELOAD': self._set_preload_path(),
+                'WRAPRUN_FILE': self.file.path,
+                }
+    
+    @property
+    def job_id(self):
         '''Determine PBS job ID from the environment.
         
         If not available (for instance if called outside a PBS script), an error
         is raised unless the script is run with debugging flags.
         '''
-        try:
-            id = os.environ["PBS_JOBID"]
-        except KeyError:
-            if self.args.wraprun.debug:
-                id = '000000'
-            else:
-                raise
-        return id
-
-    def _write_data_file(self):
-        '''Generate the data for each rank to be written to the tmp file.'''
-        if self.file_id is None:
-            self.file_id = self._set_outfile()
-        with os.fdopen(self.file_id, 'a') as f:
-            for group in self.groups:
-                for rank in group.ranks:
-                    f.write(group.env_string() + "\n")
-
-    def _set_env(self):
-        env = {}
-        env['LD_PRELOAD'] = self._get_preload_path()
-        return env
+        if self._job_id is None:
+            try:
+                self._job_id = os.environ["PBS_JOBID"]
+            except KeyError:
+                if self.args.wraprun.debug:
+                    self._job_id = '000000'
+                else:
+                    raise
+        return self._job_id
 
     def _get_account(self):
         '''Return the account string under which the parent PBS script is
@@ -274,42 +269,50 @@ class Wraprun(object):
                 raise WraprunError("Cannot determine account name.")
         return account
 
-    def _set_outfile(self):
-        '''Create a unique file descriptor for storing job data.'''
-        import tempfile
-        dir = os.path.join(
-                os.environ["MEMBERWORK"],
-                self._get_account(),
-                ".wraprun")
-        try:
-            os.makedirs(dir, 0700)
-        except OSError as err:
-            if err.errno is not 17:
-                raise
-        handle, path = tempfile.mkstemp(
-                prefix='tmp{job}_'.format(job=self.job_id),
-                suffix='.wraprun',
-                dir=dir, text=True)
-        os.environ["WRAPRUN_FILE"] = path
-        return handle
+    @property
+    def file(self):
+        if self._file.path is None:
+            import tempfile
+            dir = os.path.join(
+                    os.environ["MEMBERWORK"],
+                    self._get_account(),
+                    ".wraprun")
+            try:
+                os.makedirs(dir, 0700)
+            except OSError as err:
+                if err.errno is not 17:
+                    raise
+            fd, path = tempfile.mkstemp(
+                    prefix='tmp{job}_'.format(job=self.job_id),
+                    suffix='.wraprun',
+                    dir=dir, text=True)
+            self._file = File(fd, path)
+        return self._file
+   
+    def _write_data_file(self):
+        '''Generate the data for each rank to be written to the tmp file.'''
+        with os.fdopen(self.file.fd, 'a') as f:
+            for group in self.groups:
+                for rank in group.ranks:
+                    f.write(group.env_string() + "\n")
 
-    def _get_preload_path(self):
+    def _set_preload_path(self):
         if 'WRAPRUN_PRELOAD' not in os.environ.keys():
             log('WARNING', 'Environment variable WRAPRUN_PRELOAD not set. '
                 'Using alternate MPI wrapper.')
         return os.environ.pop('WRAPRUN_PRELOAD',
                 '/lustre/atlas/proj-shared/stf007/libsplit.so')
 
-    def env_strings(self):
+    def _env_strings(self):
         '''Return the set of shell-evaluable strings needed to
         set the environment.
         '''
-        return ['{name}="{value}"'.format(name=name, value=value)
-                for name, value in sorted(self.env.items())]
+        for name, value in self.env.items():
+            yield '{n}="{v}";'.format(n=name, v=value)
 
     def eval(self):
         self._write_data_file()
-        for env in self.env_strings():
+        for env in self._env_strings():
             print(env)
         print(self.args.string())
 
@@ -321,9 +324,6 @@ def main():
     wraprun = Wraprun()
     log('INFO', 'Launching aprun in wrapped environment')
     if wraprun.args.wraprun.debug:
-        log('DEBUG', 'Setting environment variables:')
-        for var in wraprun.env_strings():
-            log('DEBUG', var)
         log('DEBUG', 'Command line called:')
         log('DEBUG', wraprun.args.string())
     wraprun.eval()
