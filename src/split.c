@@ -84,7 +84,7 @@ static void SetEnvironmentVaribles(char *env_vars) {
 
   // environment variables are optional
   if(strln(env_vars) < 0)
-    return void;
+    return;
 
   while ((token = strsep(&env_vars, ";")) != NULL) {
     char key[1024];
