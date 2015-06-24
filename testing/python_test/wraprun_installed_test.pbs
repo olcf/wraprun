@@ -1,0 +1,25 @@
+#!/bin/bash -l
+#PBS -A stf007
+#PBS -q batch
+#PBS -l walltime=00:02:00,nodes=2
+#PBS -o wraprun_installed.$PBS_JOBID.out.log
+#PBS -N wraprun_installed
+#PBS -j oe
+
+module load wraprun/dev
+
+PROG=$RUNDIR/a.out
+if [ -z "$PBS_NUM_NODES" ]; then
+  PBS_NUM_NODES=2
+fi
+
+cmd="wraprun --w-debug "
+arg="-n 16 -N 16 $PROG"
+sep=" : "
+for i in `seq 1 $(($PBS_NUM_NODES-1))`; do
+  cmd+=$arg
+  cmd+=$sep
+done
+cmd+=$arg
+
+eval $cmd 
