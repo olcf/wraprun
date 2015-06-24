@@ -22,15 +22,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
 
+#define _GNU_SOURCE // RTLD_NEXT, must define this before ANY standard header
+#include <dlfcn.h>  // dlsym()
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
-
-#define _GNU_SOURCE // RTLD_NEXT
-#include <dlfcn.h>  // dlsym()
-
 #include "print_macros.h"
 #include "mpi.h"
 
