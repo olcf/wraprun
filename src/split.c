@@ -30,6 +30,7 @@ THE SOFTWARE.
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+#include "split.h"
 #include "print_macros.h"
 #include "mpi.h"
 
