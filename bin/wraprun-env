@@ -316,7 +316,7 @@ class Wraprun(object):
     def eval(self):
         self._write_data_file()
         for env in self._env_strings():
-            print(env)
+            print(env, end=';')
         print(self.args.string())
 
 
