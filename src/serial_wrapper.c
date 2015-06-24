@@ -27,7 +27,6 @@ THE SOFTWARE.
 #include <unistd.h>
 #include <sys/wait.h>
 #include <string.h>
-#include "split.h"
 #include "print_macros.h"
 #include "mpi.h"
 
@@ -41,8 +40,8 @@ int main(int argc, char **argv) {
   // Cray MPI_Init seems to be doing something
   // that PMPI_Init doesn't, so we call it directly
   setenv("W_UNWRAP_INIT", "1", 1);
-  setenv("W_UNWRAP_FINALIZE", "1", 1);
   MPI_Init(&new_argc, &new_argv);
+  SplitInit();
 
   int child_status;
   pid_t child_pid = fork();
