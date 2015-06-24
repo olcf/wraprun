@@ -12,12 +12,14 @@ if [ -z "$PBS_NUM_NODES" ]; then
 fi
 
 cmd="/ccs/home/belhorn/development/wraprun/bin/wraprun-env --w-debug "
-arg="-n 16 -N 16 $PROG"
+arg="-n 3,2,3,5 -N 16 $PROG : -n 1,2 -N 16 $PROG"
 sep=" : "
 for i in `seq 1 $(($PBS_NUM_NODES-1))`; do
   cmd+=$arg
   cmd+=$sep
 done
 cmd+=$arg
+
+
 
 eval $cmd 
