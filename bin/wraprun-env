@@ -233,8 +233,8 @@ class Wraprun(object):
         self._file = File(fd=None, path=None)
         self._job_id = None
         self.env = {
-                'LD_PRELOAD': self._set_preload_path() + ';',
-                'WRAPRUN_FILE': '"{0}";'.format(self.file.path),
+                'LD_PRELOAD': self._set_preload_path(),
+                'WRAPRUN_FILE': self.file.path,
                 }
     
     @property
@@ -310,8 +310,8 @@ class Wraprun(object):
         '''Return the set of shell-evaluable strings needed to
         set the environment.
         '''
-        for name, value in self.env.items():
-            yield "{n}={v}".format(n=name, v=value)
+        for key, value in self.env.items():
+            yield '{key}="{value}"'.format(key=key, value=value)
 
     def eval(self):
         self._write_data_file()
