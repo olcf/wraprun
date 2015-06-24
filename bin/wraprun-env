@@ -69,28 +69,95 @@ def log(lvl, msg):
 
 
 import argparse
+class Rank(object):
+
+    # Ordered tuple of keys in output file lines.
+    FILE_CONTENT = (
+            'color',
+            'path',
+            )
+
+    FILE_FORMAT = ' '.join(('{{{0}}}'.format(k) for k in FILE_CONTENT))
+
+    def __init__(self, rank, color, **kwargs):
+        self.rank = rank
+        self._data = {
+                'color': color,
+                'path': './', 
+                }
+        self._data.update(kwargs)
+
+    def string(self):
+        return Rank.FILE_FORMAT.format(**self._data)
+
+    @property
+    def color(self):
+        return self._data['color']
+
 class Group(object):
-    def __init__(self, arg_list, id, first_mpi_rank):
-        parser = argparse.ArgumentParser(add_help=False)
-        parser.add_argument('--w-cd', dest='cd', default='./',
+    formatters = {
+            '-n': lambda a: str(sum((int(i) for i in a.split(',')))),
+            }
+
+    def __init__(self, arg_list, id, first_color, first_rank):
+        # TODO: Move to parser to handle splitting. 
+        wparser = argparse.ArgumentParser(add_help=False)
+        wparser.add_argument('--w-cd', dest='path', default='./',
                 help="Set cwd for a groups's processes.")
 
-        self.wraprun, self.aprun_arglist = parser.parse_known_args(arg_list)
-        self.wraprun.id = id
+        self.wraprun, self.aprun_arglist = wparser.parse_known_args(arg_list)
+        
+        # TODO: Parse splits generally.
         self.pes = self._get_pes()
+        
+        self._reformat_arglist()
+        self.ranks = self._set_ranks(first_rank, first_color)
 
-        last_mpi_rank = first_mpi_rank + self.pes
-        self.ranks = [i for i in range(first_mpi_rank, last_mpi_rank)]
+    def _reformat_arglist(self):
+        # For aprun args that trigger color splitting,
+        # change those cli args to MPMD mode compatible syntax.
+        # FIXME: combine with split parsing.
+        for flag in Group.formatters.keys():
+            if flag in self.aprun_arglist:
+                arg_index = self.aprun_arglist.index(flag) + 1
+                arg = self.aprun_arglist[arg_index]
+                if ',' in arg:
+                    # Reformat this arg
+                    self.aprun_arglist[arg_index] = Group.formatters[flag](arg)
+
+    def _set_ranks(self, first_rank, first_color):
+        ranks = []
+        for subgroup_id, n_pes_in_sg in enumerate(self.pes):
+            color = first_color + subgroup_id
+            for pid in range(n_pes_in_sg):
+                rank_id = subgroup_id * n_pes_in_sg + pid + first_rank
+                rank = Rank(rank_id, color, path=self.wraprun.path)
+                ranks.append(rank)
+        return ranks
+
+    @property
+    def last_color(self):
+        return self.ranks[-1].color
+
+    @property
+    def last_rank(self):
+        return self.ranks[-1].rank
+
+    @property
+    def total_pes(self):
+        return sum(self.pes)
 
     def _get_pes(self):
         try:
             index = self.aprun_arglist.index('-n') + 1
-            return int(self.aprun_arglist[index])
+            arg = self.aprun_arglist[index]
         except ValueError:
             log('ERROR', "Missing aprun '-n' PE argument for executable "
                     "'{g}' with signature ".format(g=self.wraprun.id))
             log('ERROR', "'{s}'".format(s=' '.join(self.aprun_arglist)))
             sys.exit(1)
+        return [int(i) for i in arg.split(',')]
+
 
     def has_arg(self, arg):
         '''Return true if arg in set of aprun arguments'''
@@ -170,7 +237,10 @@ class Arguments(object):
     def _group_arglists(self):
         arglist = self._unprocessed
         start = 0
-        end = arglist.index(':')
+        try:
+            end = arglist.index(':')
+        except ValueError:
+            end = None
         while end is not None:
             yield arglist[start:end]
             start = end + 1
@@ -183,11 +253,13 @@ class Arguments(object):
     def _parse_groups(self):
         self.groups = []
         groups = self.groups
-        total_pes = 0
+        starting_color = 0
+        starting_rank = 0
         for id, group_args in enumerate(self._group_arglists()):
-            group = Group(group_args, id, total_pes)
+            group = Group(group_args, id, starting_color, starting_rank)
             groups.append(group)
-            total_pes+=group.pes
+            starting_color = group.last_color + 1
+            starting_rank = group.last_rank + 1
 
     def _parse_global_args(self):
         first_group = self.groups[0]
@@ -258,18 +330,21 @@ class Wraprun(object):
         '''Return the account string under which the parent PBS script is
         running.
         '''
-        import subprocess
-        qstat = subprocess.Popen(
-                ['qstat', '-f', self.job_id], stdout=subprocess.PIPE)
-        for line in qstat.stdout.readlines():
-            if 'Account_Name' in line:
-                account = (line[19:-1]).lower()
-                break
-        else:
-            if self.args.wraprun.debug:
-                account = 'stf007'
+        if self.job_id != '000000':
+            import subprocess
+            qstat = subprocess.Popen(
+                    ['qstat', '-f', self.job_id], stdout=subprocess.PIPE)
+            for line in qstat.stdout.readlines():
+                if 'Account_Name' in line:
+                    account = (line[19:-1]).lower()
+                    break
             else:
-                raise WraprunError("Cannot determine account name.")
+                if self.args.wraprun.debug:
+                    account = 'stf007'
+                else:
+                    raise WraprunError("Cannot determine account name.")
+        else:
+            account = 'stf007'
         return account
 
     @property
@@ -297,7 +372,7 @@ class Wraprun(object):
         with os.fdopen(self.file.fd, 'a') as f:
             for group in self.groups:
                 for rank in group.ranks:
-                    f.write(group.env_string() + "\n")
+                    f.write(rank.string() + "\n")
 
     def _set_preload_path(self):
         if 'WRAPRUN_PRELOAD' not in os.environ.keys():
@@ -333,6 +408,14 @@ def main():
         log('DEBUG', 'Command line called:')
         log('DEBUG', wraprun.args.string())
     wraprun.eval()
+
+    if wraprun.args.wraprun.debug:
+        log('DEBUG', 'Contents of output file:')
+        with open(wraprun.file.path) as f:
+            width = len(str(wraprun.groups[-1].last_rank))
+            for ln, line in enumerate(f):
+                log('DEBUG', '{ln:0{width}d}|{line}'.format(
+                    ln=ln, width=width, line=line[:-1]))
 
 
 
