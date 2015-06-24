@@ -65,7 +65,7 @@ static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
     EXIT_PRINT("Error parsing file line\n");
 
   free(line);
-  free(file);
+  fclose(file);
 }
 
 void SetSplitCommunicator(int color) {
@@ -147,8 +147,6 @@ int MPI_Init(int *argc, char ***argv) {
 }
 
 int MPI_Finalize() {
-  DEBUG_PRINT("Wrapped!\n");
-
   int err = PMPI_Comm_free(&MPI_COMM_SPLIT);
   if(err != MPI_SUCCESS)
     EXIT_PRINT("Failed to free split communicator: %d !\n", err);
