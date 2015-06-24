@@ -133,7 +133,7 @@ int MPI_Init(int *argc, char ***argv) {
   // Allow MPI_Init to be called directly
   // It is assumed the user calls SplitInit() immediately after MPI_Init
   // This was added for Cray may do something special in MPI_Init
-  if (getenv("W_MANUAL_LAUNCH")) {
+  if (getenv("W_UNWRAP_INIT")) {
     DEBUG_PRINT("Unwrapped!\n");
     int (*real_MPI_Init)(int*, char***) = dlsym(RTLD_NEXT, "MPI_Init");
     int return_value = (*real_MPI_Init)(argc, argv);
@@ -141,9 +141,7 @@ int MPI_Init(int *argc, char ***argv) {
   }
 
   DEBUG_PRINT("Wrapped!\n");
-
   int return_value = PMPI_Init(argc, argv);
-
   SplitInit();
 
   return return_value;
