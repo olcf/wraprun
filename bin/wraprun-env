@@ -311,12 +311,12 @@ class Wraprun(object):
         set the environment.
         '''
         for key, value in self.env.items():
-            yield '{key}="{value}"'.format(key=key, value=value)
+            yield 'export {key}="{value}"'.format(key=key, value=value)
 
     def eval(self):
         self._write_data_file()
         for env in self._env_strings():
-            print(env, end=' ')
+            print(env)
         print(self.args.string())
 
 
