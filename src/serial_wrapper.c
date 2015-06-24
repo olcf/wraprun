@@ -27,10 +27,9 @@ THE SOFTWARE.
 #include <unistd.h>
 #include <sys/wait.h>
 #include <string.h>
+#include "split.h"
 #include "print_macros.h"
 #include "mpi.h"
-
-extern SplitInit();
 
 int main(int argc, char **argv) {
   if (argc < 2)

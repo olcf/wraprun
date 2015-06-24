@@ -30,10 +30,15 @@ This is particularly useful for legacy Fortran codes that use hard coded input a
 
 If the module file is not used it is expected that the `WRAPRUN_PRELOAD` environment variable is correctly set to point to `libsplit.so` and potentially `libfmpich.so`.
 
-## Requirements
-* All executables must be dynamically linked
-	** On Titan this can be accomplished by loading the dynamic-link module before invoking the Cray compile wrappers `CC`,`cc`, `ftn`.
-* All executables must reside in a compute mode visible filesystem, e.g. lustre. Executables will not be copied as they normally are.
+## Notes
+* It is recommended that applications be dynamically linked
+	* On Titan this can be accomplished by loading the dynamic-link module before invoking the Cray compile wrappers `CC`,`cc`, `ftn`.
+  * The library may be statically linked although this is not fully supported.
+* All executables used in MPMD mode must be MPI applications, that is they must at least include `MPI_Init`
+  * a `serial` executable is provided to facilitate this for serial applications
+    * wraprun -n 1 serial ./foo.out
+* All executables must reside in a compute mode visible filesystem, e.g. Lustre. Executables will not be copied as they normally are.
+
 
 ## Disclaimer
 `wraprun` works by intercepting <i>all</i> MPI function calls that contain an `MPI_Comm` argument. If an application calls an MPI function, containing an `MPI_Comm` argument, not included in `src/split.c` the results are undefined.
