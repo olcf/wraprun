@@ -22,7 +22,6 @@ endif()
 
 # Serial application wrapper
 add_executable(serial src/serial_wrapper.c)
-target_link_libraries(serial split)
 
 install(TARGETS split DESTINATION lib)
 install(TARGETS split_static DESTINATION lib)
