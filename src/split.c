@@ -104,6 +104,11 @@ static void SetEnvironmentVaribles(char *env_vars) {
 }
 
 void SplitInit() {
+  // Cray has issues when LD_PRELOAD is set
+  // and exec*() is called...this is a workaround
+  if (getenv("W_UNSET_PRELOAD"))
+    unsetenv("LD_PRELOAD"); 
+
   int rank;
   PMPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
@@ -111,7 +116,7 @@ void SplitInit() {
   char *work_dir = calloc(2048, sizeof(char));
   if(!work_dir)
     EXIT_PRINT("Error allocating work_dir memory!\n");
-  char *env_vars = calloc(2048, sizeof(char));
+  char *env_vars = calloc(4096, sizeof(char));
   if(!env_vars)
     EXIT_PRINT("Error allocating env_vars memory!\n");
   env_vars[0] = '\0'; // "zero" out env_vars
