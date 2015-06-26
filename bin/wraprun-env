@@ -148,7 +148,7 @@ class Group(object):
         # FIXME: '-b' should be parsed in Arguments class with global aprun
         # options and should raise an error if caught in a group.
         wparser.add_argument('-b', dest='bypass', action=FlagAction)
-        wparser.add_argument('--w-cd', dest='path', action=PathAction)
+        wparser.add_argument('--w-cd', dest='path', default=['./'], action=PathAction)
         wparser.add_argument('-n', dest='pes', required=True, action=PesAction)
         wparser.add_argument('-a', dest='arch', action=ArgAction)
         wparser.add_argument('-cc', dest='cpu_list', action=ArgAction)
@@ -177,10 +177,10 @@ class Group(object):
 
     def _get_nsplit(self, parser):
         splits = set((len(arg) for arg, _ in self.scan_splits(parser) if len(arg) != 1))
-        if len(splits) != 1:
+        if len(splits) > 1:
             raise GroupError('Inconsistent splits given {}'.format(splits))
         else:
-            return max(splits)
+            return max(splits) if splits else 1
 
     def _scale_split_args(self, parser):
         for v, action in self.scan_splits(parser):
