@@ -24,13 +24,6 @@ THE SOFTWARE.
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
-#include "print_macros.h"
-#include "mpi.h"
-
-int main(int argc, char **argv) {
-#include <stdio.h>
-#include <stdlib.h>
 #include <unistd.h>
 #include <sys/wait.h>
 #include <string.h>
@@ -61,6 +54,4 @@ int main(int argc, char **argv) {
     MPI_Finalize();
     return child_status;
   }
-}
-
 }
