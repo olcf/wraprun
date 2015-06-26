@@ -69,45 +69,158 @@ def log(lvl, msg):
 
 
 import argparse
+class Rank(object):
+
+    # Ordered tuple of keys in output file lines.
+    FILE_CONTENT = (
+            'color',
+            'path',
+            )
+
+    FILE_FORMAT = ' '.join(('{{{0}}}'.format(k) for k in FILE_CONTENT))
+
+    def __init__(self, rank, color, **kwargs):
+        self.rank = rank
+        self._data = {
+                'color': color,
+                'path': './', 
+                }
+        self._data.update(kwargs)
+
+    def string(self):
+        return Rank.FILE_FORMAT.format(**self._data)
+
+    @property
+    def color(self):
+        return self._data['color']
+
+
+
+class ArgAction(argparse.Action):
+    def __init__(self, *args, **kwargs):
+        super(ArgAction, self).__init__(*args, **kwargs)
+        self.split = False
+        self.cli = None
+        
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, values)
+        self.cli = [option_string, values]
+    
+class FlagAction(ArgAction):
+    def __init__(self, *args, **kwargs):
+        default = kwargs.pop('default', False)
+        nargs = kwargs.pop('nargs', 0)
+        super(FlagAction, self).__init__(*args, default=default, nargs=0, **kwargs)
+        
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, values)
+        self.cli = [option_string]
+    
+class PesAction(ArgAction):
+    def __init__(self, *args, **kwargs):
+        super(PesAction, self).__init__(*args, **kwargs)
+        self.split = True
+        
+    def __call__(self, parser, namespace, values, option_string=None):
+        v = [int(i) for i in values.split(',')]
+        setattr(namespace, self.dest, v)
+        self.cli = [option_string, str(sum(v))]
+    
+class PathAction(ArgAction):
+    def __init__(self, *args, **kwargs):
+        super(PathAction, self).__init__(*args, **kwargs)
+        self.split = True
+        self.is_aprun_arg = False
+        
+    def __call__(self, parser, namespace, values, option_string=None):
+        v = [i for i in values.split(',')]
+        setattr(namespace, self.dest, v)
+
+
+class GroupError(Exception):
+    pass
+
+
 class Group(object):
-    def __init__(self, arg_list, id, first_mpi_rank):
-        parser = argparse.ArgumentParser(add_help=False)
-        parser.add_argument('--w-cd', dest='cd', default='./',
-                help="Set cwd for a groups's processes.")
+    def __init__(self, arg_list, id, first_color, first_rank):
+        wparser = argparse.ArgumentParser(add_help=False)
+        # Aprun options (2015/06/25):
+        # FIXME: '-b' should be parsed in Arguments class with global aprun
+        # options and should raise an error if caught in a group.
+        wparser.add_argument('-b', dest='bypass', action=FlagAction)
+        wparser.add_argument('--w-cd', dest='path', action=PathAction)
+        wparser.add_argument('-n', dest='pes', required=True, action=PesAction)
+        wparser.add_argument('-a', dest='arch', action=ArgAction)
+        wparser.add_argument('-cc', dest='cpu_list', action=ArgAction)
+        wparser.add_argument('-cp', dest='cpu_placement_file', action=ArgAction)
+        wparser.add_argument('-d', dest='depth', action=ArgAction)
+        wparser.add_argument('-L', dest='node_list', action=ArgAction)
+        wparser.add_argument('-N', dest='pes_per_node', action=ArgAction)
+        wparser.add_argument('-S', dest='pes_per_numa_node', action=ArgAction)
+        wparser.add_argument('-sl', dest='numa_node_list', action=ArgAction)
+        wparser.add_argument('-sn', dest='numa_nodes_per_node', action=ArgAction)
+        wparser.add_argument('-ss', dest='strict_memory', action=FlagAction)
+        wparser.add_argument('exe', nargs=argparse.REMAINDER)
 
-        self.wraprun, self.aprun_arglist = parser.parse_known_args(arg_list)
-        self.wraprun.id = id
-        self.pes = self._get_pes()
+        self.wraprun = wparser.parse_args(arg_list)
+        self.nsplits = self._get_nsplit(wparser)
+        self._scale_split_args(wparser)
+        
+        self.ranks = self._set_ranks(first_rank, first_color)
+        self.cli_arglist = [s for a in wparser._actions if getattr(a, 'cli', None) is not None for s in a.cli] + self.wraprun.exe
+        
+    def scan_splits(self, parser):
+        for action in parser._actions:
+            v = getattr(self.wraprun, action.dest, None)
+            if getattr(action, 'split', False) and v is not None:
+                yield v, action
 
-        last_mpi_rank = first_mpi_rank + self.pes
-        self.ranks = [i for i in range(first_mpi_rank, last_mpi_rank)]
+    def _get_nsplit(self, parser):
+        splits = set((len(arg) for arg, _ in self.scan_splits(parser) if len(arg) != 1))
+        if len(splits) != 1:
+            raise GroupError('Inconsistent splits given {}'.format(splits))
+        else:
+            return max(splits)
 
-    def _get_pes(self):
-        try:
-            index = self.aprun_arglist.index('-n') + 1
-            return int(self.aprun_arglist[index])
-        except ValueError:
-            log('ERROR', "Missing aprun '-n' PE argument for executable "
-                    "'{g}' with signature ".format(g=self.wraprun.id))
-            log('ERROR', "'{s}'".format(s=' '.join(self.aprun_arglist)))
-            sys.exit(1)
+    def _scale_split_args(self, parser):
+        for v, action in self.scan_splits(parser):
+            if len(v) != self.nsplits:
+                setattr(self.wraprun, action.dest, v * self.nsplits) 
+
+    def _set_ranks(self, first_rank, first_color):
+        ranks = []
+        for subgroup_id, n_pes_in_sg in enumerate(self.wraprun.pes):
+            color = first_color + subgroup_id
+            for pid in range(n_pes_in_sg):
+                rank_id = subgroup_id * n_pes_in_sg + pid + first_rank
+                rank = Rank(rank_id, color, path=self.wraprun.path[subgroup_id])
+                ranks.append(rank)
+        return ranks
+
+    @property
+    def last_color(self):
+        return self.ranks[-1].color
+
+    @property
+    def last_rank(self):
+        return self.ranks[-1].rank
+
+    @property
+    def total_pes(self):
+        return sum(self.wraprun.pes)
 
     def has_arg(self, arg):
         '''Return true if arg in set of aprun arguments'''
-        return True if arg in self.aprun_arglist else False
+        return True if getattr(self.wraprun, arg, None) is not None else False
 
     def arg_string(self):
-        return ' '.join(self.aprun_arglist)
-
-    def env_string(self):
-        var = "{id} {cd}"
-        return var.format(**(self.wraprun.__dict__))
+        return ' '.join(self.cli_arglist)
 
 
 class Arguments(object):
     '''A class to parse and encapsulate arguments to a wraprun call and it's
     underlying aprun call.'''
-    REQUIRED_APRUN_ARGS = {'-b':None,}
+    REQUIRED_APRUN_ARGS = {'bypass':None,}
 
     def __init__(self):
         self._args = {
@@ -170,7 +283,10 @@ class Arguments(object):
     def _group_arglists(self):
         arglist = self._unprocessed
         start = 0
-        end = arglist.index(':')
+        try:
+            end = arglist.index(':')
+        except ValueError:
+            end = None
         while end is not None:
             yield arglist[start:end]
             start = end + 1
@@ -183,11 +299,13 @@ class Arguments(object):
     def _parse_groups(self):
         self.groups = []
         groups = self.groups
-        total_pes = 0
+        starting_color = 0
+        starting_rank = 0
         for id, group_args in enumerate(self._group_arglists()):
-            group = Group(group_args, id, total_pes)
+            group = Group(group_args, id, starting_color, starting_rank)
             groups.append(group)
-            total_pes+=group.pes
+            starting_color = group.last_color + 1
+            starting_rank = group.last_rank + 1
 
     def _parse_global_args(self):
         first_group = self.groups[0]
@@ -258,18 +376,21 @@ class Wraprun(object):
         '''Return the account string under which the parent PBS script is
         running.
         '''
-        import subprocess
-        qstat = subprocess.Popen(
-                ['qstat', '-f', self.job_id], stdout=subprocess.PIPE)
-        for line in qstat.stdout.readlines():
-            if 'Account_Name' in line:
-                account = (line[19:-1]).lower()
-                break
-        else:
-            if self.args.wraprun.debug:
-                account = 'stf007'
+        if self.job_id != '000000':
+            import subprocess
+            qstat = subprocess.Popen(
+                    ['qstat', '-f', self.job_id], stdout=subprocess.PIPE)
+            for line in qstat.stdout.readlines():
+                if 'Account_Name' in line:
+                    account = (line[19:-1]).lower()
+                    break
             else:
-                raise WraprunError("Cannot determine account name.")
+                if self.args.wraprun.debug:
+                    account = 'stf007'
+                else:
+                    raise WraprunError("Cannot determine account name.")
+        else:
+            account = 'stf007'
         return account
 
     @property
@@ -297,7 +418,7 @@ class Wraprun(object):
         with os.fdopen(self.file.fd, 'a') as f:
             for group in self.groups:
                 for rank in group.ranks:
-                    f.write(group.env_string() + "\n")
+                    f.write(rank.string() + "\n")
 
     def _set_preload_path(self):
         if 'WRAPRUN_PRELOAD' not in os.environ.keys():
@@ -333,6 +454,14 @@ def main():
         log('DEBUG', 'Command line called:')
         log('DEBUG', wraprun.args.string())
     wraprun.eval()
+
+    if wraprun.args.wraprun.debug:
+        log('DEBUG', 'Contents of output file:')
+        with open(wraprun.file.path) as f:
+            width = len(str(wraprun.groups[-1].last_rank))
+            for ln, line in enumerate(f):
+                log('DEBUG', '  {ln:0{width}d}|{line}'.format(
+                    ln=ln, width=width, line=line[:-1]))
 
 
 
