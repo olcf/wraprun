@@ -30,7 +30,6 @@ THE SOFTWARE.
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
-#include "split.h"
 #include "print_macros.h"
 #include "mpi.h"
 
@@ -66,7 +65,7 @@ static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
     EXIT_PRINT("Error parsing file line\n");
 
   free(line);
-  free(file);
+  fclose(file);
 }
 
 void SetSplitCommunicator(int color) {
@@ -105,6 +104,11 @@ static void SetEnvironmentVaribles(char *env_vars) {
 }
 
 void SplitInit() {
+  // Cray has issues when LD_PRELOAD is set
+  // and exec*() is called...this is a workaround
+  if (getenv("W_UNSET_PRELOAD"))
+    unsetenv("LD_PRELOAD"); 
+
   int rank;
   PMPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
@@ -112,7 +116,7 @@ void SplitInit() {
   char *work_dir = calloc(2048, sizeof(char));
   if(!work_dir)
     EXIT_PRINT("Error allocating work_dir memory!\n");
-  char *env_vars = calloc(2048, sizeof(char));
+  char *env_vars = calloc(4096, sizeof(char));
   if(!env_vars)
     EXIT_PRINT("Error allocating env_vars memory!\n");
   env_vars[0] = '\0'; // "zero" out env_vars
@@ -131,30 +135,39 @@ void SplitInit() {
 
 int MPI_Init(int *argc, char ***argv) {
   // Allow MPI_Init to be called directly
-  // It is assumed the user calls SplitInit() immediately after MPI_Init
-  // This was added for Cray may do something special in MPI_Init
+  // This was added as Cray may do something special in MPI_Init
+  int return_value;
   if (getenv("W_UNWRAP_INIT")) {
     DEBUG_PRINT("Unwrapped!\n");
     int (*real_MPI_Init)(int*, char***) = dlsym(RTLD_NEXT, "MPI_Init");
-    int return_value = (*real_MPI_Init)(argc, argv);
-    return return_value;
+    return_value = (*real_MPI_Init)(argc, argv);
+  }
+  else {
+    DEBUG_PRINT("Wrapped!\n");
+    return_value = PMPI_Init(argc, argv);
   }
 
-  DEBUG_PRINT("Wrapped!\n");
-  int return_value = PMPI_Init(argc, argv);
   SplitInit();
-
   return return_value;
 }
 
 int MPI_Finalize() {
-  DEBUG_PRINT("Wrapped!\n");
-
   int err = PMPI_Comm_free(&MPI_COMM_SPLIT);
   if(err != MPI_SUCCESS)
     EXIT_PRINT("Failed to free split communicator: %d !\n", err);
 
-  return PMPI_Finalize();
+  int return_value;
+  if (getenv("W_UNWRAP_FINALIZE")) {
+    DEBUG_PRINT("Unwrapped!\n");
+    int (*real_MPI_Finalize)() = dlsym(RTLD_NEXT, "MPI_Finalize");
+    return_value = (*real_MPI_Finalize)();
+  }
+  else {
+    DEBUG_PRINT("Wrapped!\n");
+    return_value = PMPI_Finalize();
+  }
+
+  return return_value;
 }
 
 // If input_comm == MPI_COMM_WORLD return MPI_COMM_SPLIT else input_comm
