@@ -94,44 +94,121 @@ class Rank(object):
     def color(self):
         return self._data['color']
 
-class Group(object):
-    formatters = {
-            '-n': lambda a: str(sum((int(i) for i in a.split(',')))),
-            }
 
+class FirstOccurance(argparse.Action):
+    def __init__(self, *args, **kwargs):
+        super(FirstOccurance, self).__init__(*args, **kwargs)
+        self.overflow = []
+        self.prepend = []
+        self.splits = False
+        self.nsplits = 0
+        self.aprun = False
+        self._parsed = False
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        if not self._parsed or getattr(namespace, self.dest) is None:
+            self._parsed = True
+            ns_val = self.ns_format(values)
+            setattr(namespace, self.dest, ns_val)
+            if self.aprun:
+                # Prepend to command with formatting.
+                if option_string is not None:
+                    self.prepend.append(option_string)
+                if values:
+                    self.prepend.append(self.cli_format(values))
+            if self.splits:
+                self.nsplits = len(ns_val)
+        else:
+            log('WARNING', 'Moving doubled argument "{0} {1}" to end of '
+                    'arglist.'.format(option_string, values))
+            # Do not format duplicated values.
+            cli = (i for i in (option_string, values) if i is not None)
+            self.overflow.extend(cli)
+
+    def ns_format(self, values):
+        return values
+
+    def cli_format(self, values):
+        return values
+
+
+class PesAction(FirstOccurance):
+    def __init__(self, *args, **kwargs):
+        super(PesAction, self).__init__(*args, **kwargs)
+        self.splits = True
+        self.aprun = True
+
+    def ns_format(self, values):
+        return [int(i) for i in values.split(',')]
+
+    def cli_format(self, values):
+        return str(sum(self.ns_format(values)))
+
+
+class PathAction(FirstOccurance):
+    def __init__(self, *args, **kwargs):
+        super(PathAction, self).__init__(*args, **kwargs)
+        self.splits = True
+
+    def ns_format(self, values):
+        return [i for i in values.split(',')]
+
+class GroupError(Exception):
+    pass
+
+class Group(object):
     def __init__(self, arg_list, id, first_color, first_rank):
-        # TODO: Move to parser to handle splitting. 
         wparser = argparse.ArgumentParser(add_help=False)
-        wparser.add_argument('--w-cd', dest='path', default='./',
-                help="Set cwd for a groups's processes.")
+        custom_args = {
+                'path': wparser.add_argument(
+                        '--w-cd',
+                        dest='path',
+                        default='./',
+                        action=PathAction,
+                        help="Set cwd for a groups's processes."),
+                'pes': wparser.add_argument(
+                        '-n',
+                        dest='pes',
+                        action=PesAction),
+                }
 
         self.wraprun, self.aprun_arglist = wparser.parse_known_args(arg_list)
-        
-        # TODO: Parse splits generally.
-        self.pes = self._get_pes()
-        
-        self._reformat_arglist()
+
+        split_count = set()
+        for arg in custom_args.values():
+            self.aprun_arglist = arg.prepend + self.aprun_arglist + arg.overflow
+            if arg.splits and arg.nsplits != 1:
+                split_count.add(arg.nsplits)
+        if len(split_count) > 1:
+            print(split_count)
+            raise GroupError('Inconsistent group splitting')
+        else:
+            self.nsplits = max(split_count)
+        for arg in custom_args.values():
+            if arg.splits and hasattr(self.wraprun, arg.dest):
+                v = getattr(self.wraprun, arg.dest)
+                if len(v) == 1:
+                    setattr(self.wraprun, arg.dest, v * self.nsplits) 
+
         self.ranks = self._set_ranks(first_rank, first_color)
 
-    def _reformat_arglist(self):
-        # For aprun args that trigger color splitting,
-        # change those cli args to MPMD mode compatible syntax.
-        # FIXME: combine with split parsing.
-        for flag in Group.formatters.keys():
-            if flag in self.aprun_arglist:
-                arg_index = self.aprun_arglist.index(flag) + 1
-                arg = self.aprun_arglist[arg_index]
-                if ',' in arg:
-                    # Reformat this arg
-                    self.aprun_arglist[arg_index] = Group.formatters[flag](arg)
+    def _get_pes(self):
+        try:
+            arg = self.wraprun.pes
+        except ValueError:
+            log('ERROR', "Missing aprun '-n' PE argument for executable "
+                    "'{g}' with signature ".format(g=self.wraprun.id))
+            log('ERROR', "'{s}'".format(s=' '.join(self.aprun_arglist)))
+            sys.exit(1)
+        return [int(i) for i in arg.split(',')]
 
     def _set_ranks(self, first_rank, first_color):
         ranks = []
-        for subgroup_id, n_pes_in_sg in enumerate(self.pes):
+        for subgroup_id, n_pes_in_sg in enumerate(self.wraprun.pes):
             color = first_color + subgroup_id
             for pid in range(n_pes_in_sg):
                 rank_id = subgroup_id * n_pes_in_sg + pid + first_rank
-                rank = Rank(rank_id, color, path=self.wraprun.path)
+                rank = Rank(rank_id, color, path=self.wraprun.path[subgroup_id])
                 ranks.append(rank)
         return ranks
 
@@ -145,19 +222,7 @@ class Group(object):
 
     @property
     def total_pes(self):
-        return sum(self.pes)
-
-    def _get_pes(self):
-        try:
-            index = self.aprun_arglist.index('-n') + 1
-            arg = self.aprun_arglist[index]
-        except ValueError:
-            log('ERROR', "Missing aprun '-n' PE argument for executable "
-                    "'{g}' with signature ".format(g=self.wraprun.id))
-            log('ERROR', "'{s}'".format(s=' '.join(self.aprun_arglist)))
-            sys.exit(1)
-        return [int(i) for i in arg.split(',')]
-
+        return sum(self.wraprun.pes)
 
     def has_arg(self, arg):
         '''Return true if arg in set of aprun arguments'''
@@ -414,7 +479,7 @@ def main():
         with open(wraprun.file.path) as f:
             width = len(str(wraprun.groups[-1].last_rank))
             for ln, line in enumerate(f):
-                log('DEBUG', '{ln:0{width}d}|{line}'.format(
+                log('DEBUG', '  {ln:0{width}d}|{line}'.format(
                     ln=ln, width=width, line=line[:-1]))
 
 
