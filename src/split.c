@@ -103,11 +103,33 @@ static void SetEnvironmentVaribles(char *env_vars) {
   }
 }
 
+// Redirect stdout and stderr to file based upon color
+void SetStdOutErr(int color) {
+  char *job_id = getenv("PBS_JOBID");
+  char file_name[1024];
+
+  sprintf(file_name, "%s_w_%d.out", job_id, color);
+  FILE *handle;
+  handle = freopen(file_name, "a", stdout);
+  if(!handle)
+    EXIT_PRINT("Error setting stdout!\n");
+
+  sprintf(file_name, "%s_w_%d.err", job_id, color);
+  handle = freopen(file_name, "a", stderr);
+  if(!handle)
+    EXIT_PRINT("Error setting stderr\n");
+}
+
+void CloseStdOutErr() {
+  fclose(stdout);
+  fclose(stderr);
+}
+
 void SplitInit() {
   // Cray has issues when LD_PRELOAD is set
   // and exec*() is called...this is a workaround
   if (getenv("W_UNSET_PRELOAD"))
-    unsetenv("LD_PRELOAD"); 
+    unsetenv("LD_PRELOAD");
 
   int rank;
   PMPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -122,6 +144,9 @@ void SplitInit() {
   env_vars[0] = '\0'; // "zero" out env_vars
 
   GetRankParamsFromFile(rank, &color, work_dir, env_vars);
+
+  if (getenv("W_REDIRECT_OUTERR"))
+    SetStdOutErr(color);
 
   SetSplitCommunicator(color);
 
@@ -166,6 +191,9 @@ int MPI_Finalize() {
     DEBUG_PRINT("Wrapped!\n");
     return_value = PMPI_Finalize();
   }
+
+  if (getenv("W_REDIRECT_OUTERR"))
+    CloseStdOutErr();
 
   return return_value;
 }
