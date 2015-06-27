@@ -1,0 +1,25 @@
+#!/bin/bash -l
+#PBS -A stf007
+#PBS -q batch
+#PBS -l walltime=00:02:00,nodes=2
+#PBS -o wraprun-env_local.$PBS_JOBID.out.log
+#PBS -N wraprun-env_local
+#PBS -j oe
+
+PROG=$RUNDIR/a.out
+if [ -z "$PBS_NUM_NODES" ]; then
+  PBS_NUM_NODES=2
+fi
+
+cmd="/ccs/home/belhorn/development/wraprun/bin/wraprun-env --w-debug "
+arg="-n 3,2,3,5 -N 16 $PROG : -n 1,2 -N 16 $PROG"
+sep=" : "
+for i in `seq 1 $(($PBS_NUM_NODES-1))`; do
+  cmd+=$arg
+  cmd+=$sep
+done
+cmd+=$arg
+
+
+
+eval $cmd 

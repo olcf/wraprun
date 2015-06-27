@@ -22,57 +22,177 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
 
+#define _GNU_SOURCE // RTLD_NEXT, must define this before ANY standard header
+#include <dlfcn.h>  // dlsym()
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "debug.h"
+#include <unistd.h>
+#include <errno.h>
+#include "print_macros.h"
 #include "mpi.h"
 
 static MPI_Comm MPI_COMM_SPLIT;
 
-// Returns color integer fetched from WRAPRUN_{rank}
-static int GetColor(const int rank)
-{
-  // construct environment variable WRAPRUN_${RANK}
-  char color_var[64];
-  sprintf(color_var, "WRAPRUN_%d", rank);
+// Parse color, work_dir, env_vars from wraprun file
+static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
+                                  char *env_vars) {
+  // Get file name from environment variable
+  const char *const file_name = getenv("WRAPRUN_FILE");
+  if(!file_name)
+    EXIT_PRINT("%s environment variable not set, exiting!\n", "WRAPRUN_FILE");
 
-  // Read color from environment variable
-  char *char_color = getenv(color_var);
-  if(char_color == NULL) {
-    printf("%s environment variable not set, exiting!\n", color_var);
-    exit(EXIT_FAILURE);
+  // Search file and read in rank'th line of file
+  FILE *const file = fopen(file_name, "r");
+  if(!file)
+    EXIT_PRINT("Can't open %s\n", file_name);
+
+  char *line = NULL;
+
+  for(int line_num=0; line_num<=rank; ++line_num) {
+    size_t length = 0;
+    const ssize_t char_count = getline(&line, &length, file);
+    if(char_count == -1)
+      EXIT_PRINT("Error reading rank %d info from %s\n", rank, file_name);
   }
-  return strtol(char_color, &char_color, 10);
+
+  // Extract parameters
+  const int num_params = sscanf(line, "%d %s %s", color, work_dir, env_vars);
+  if(num_params == EOF)
+    EXIT_PRINT("Error parsing file line\n");
+
+  free(line);
+  fclose(file);
 }
 
-// Hijack to create MPI_COMM_SPLIT
-int MPI_Init(int *argc, char ***argv) {
-  DEBUG_PRINT("Wrapped!\n");
+void SetSplitCommunicator(const int color) {
+  const int err = PMPI_Comm_split(MPI_COMM_WORLD, color, 0, &MPI_COMM_SPLIT);
+  if(err != MPI_SUCCESS)
+    EXIT_PRINT("Failed to split communicator: %d!\n", err);
+}
 
-  int return_value = PMPI_Init(argc, argv);
+void SetWorkingDirectory(const char *const work_dir) {
+  const int err = chdir(work_dir);
+  if(err)
+    EXIT_PRINT("Failed to change working directory: %s!\n", strerror(errno));
+}
+
+// Set environment variables in env_vars string
+// with format "key1=value2;key2=value2"
+static void SetEnvironmentVaribles(const char *const env_vars) {
+  char *token;
+
+  // environment variables are optional
+  if(strlen(env_vars) == 0)
+    return;
+
+  while ((token = strsep(&env_vars, ";")) != NULL) {
+    char key[1024];
+    char value[1024];
+    const int num_components = sscanf(token, "%s=%s", key, value);
+    if(num_components == 2) {
+      const int err = setenv(key, value, 1);
+      if(err)
+        EXIT_PRINT("Error setting environment variable: %s\n", strerror(errno));
+    }
+    else
+      EXIT_PRINT("Error parsing environment_variables\n");
+  }
+}
+
+// Redirect stdout and stderr to file based upon color
+void SetStdOutErr(const int color) {
+  const char *const job_id = getenv("PBS_JOBID");
+  char file_name[1024];
+
+  sprintf(file_name, "%s_w_%d.out", job_id, color);
+  const FILE *const out_handle = freopen(file_name, "a", stdout);
+  if(!out_handle)
+    EXIT_PRINT("Error setting stdout!\n");
+
+  sprintf(file_name, "%s_w_%d.err", job_id, color);
+  const FILE *const err_handle = freopen(file_name, "a", stderr);
+  if(!err_handle)
+    EXIT_PRINT("Error setting stderr\n");
+}
+
+void CloseStdOutErr() {
+  fclose(stdout);
+  fclose(stderr);
+}
+
+void SplitInit() {
+  // Cray has issues when LD_PRELOAD is set
+  // and exec*() is called...this is a workaround
+  if (getenv("W_UNSET_PRELOAD"))
+    unsetenv("LD_PRELOAD");
 
   int rank;
   PMPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-  int color = GetColor(rank);
+  int color;
+  char *const work_dir = calloc(2048, sizeof(char));
+  if(!work_dir)
+    EXIT_PRINT("Error allocating work_dir memory!\n");
+  char *const env_vars = calloc(4096, sizeof(char));
+  if(!env_vars)
+    EXIT_PRINT("Error allocating env_vars memory!\n");
+  env_vars[0] = '\0'; // "zero" out env_vars
 
-  int err = PMPI_Comm_split(MPI_COMM_WORLD, color, 0, &MPI_COMM_SPLIT);
-  if(err != MPI_SUCCESS) {
-    printf("Failed to split communicator: %d !\n", err);
-    exit(EXIT_FAILURE);
+  GetRankParamsFromFile(rank, &color, work_dir, env_vars);
+
+  if (getenv("W_REDIRECT_OUTERR"))
+    SetStdOutErr(color);
+
+  SetSplitCommunicator(color);
+
+  SetWorkingDirectory(work_dir);
+
+  SetEnvironmentVaribles(env_vars);
+
+  free(work_dir);
+  free(env_vars);
+}
+
+int MPI_Init(int *argc, char ***argv) {
+  // Allow MPI_Init to be called directly
+  // This was added as Cray may do something special in MPI_Init
+  int return_value;
+  if (getenv("W_UNWRAP_INIT")) {
+    DEBUG_PRINT("Unwrapped!\n");
+    int (*real_MPI_Init)(int*, char***) = dlsym(RTLD_NEXT, "MPI_Init");
+    return_value = (*real_MPI_Init)(argc, argv);
+  }
+  else {
+    DEBUG_PRINT("Wrapped!\n");
+    return_value = PMPI_Init(argc, argv);
   }
 
+  SplitInit();
   return return_value;
 }
 
 int MPI_Finalize() {
-  int err = PMPI_Comm_free(&MPI_COMM_SPLIT);
-  if(err != MPI_SUCCESS) {
-    printf("Failed to free split communicator: %d !\n", err);
-    exit(EXIT_FAILURE);
+  const int err = PMPI_Comm_free(&MPI_COMM_SPLIT);
+  if(err != MPI_SUCCESS)
+    EXIT_PRINT("Failed to free split communicator: %d !\n", err);
+
+  int return_value;
+  if (getenv("W_UNWRAP_FINALIZE")) {
+    DEBUG_PRINT("Unwrapped!\n");
+    int (*real_MPI_Finalize)() = dlsym(RTLD_NEXT, "MPI_Finalize");
+    return_value = (*real_MPI_Finalize)();
   }
-  return PMPI_Finalize();
+  else {
+    DEBUG_PRINT("Wrapped!\n");
+    return_value = PMPI_Finalize();
+  }
+
+  if (getenv("W_REDIRECT_OUTERR"))
+    CloseStdOutErr();
+
+  return return_value;
 }
 
 // If input_comm == MPI_COMM_WORLD return MPI_COMM_SPLIT else input_comm

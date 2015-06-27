@@ -25,7 +25,7 @@ class WraprunFormula < Formula
         commands << "swap intel cray/#{$1}" if build_name =~ /cray([\d\.]+)/
 
         commands << "load dynamic-link"
-        commands << "load cmake"
+        commands << "load cmake3"
         commands << "load git"
 
         commands
@@ -65,7 +65,7 @@ class WraprunFormula < Formula
     commands << "swap intel cray/#{$1}" if build_name =~ /cray([\d\.]+)/
 
     commands << "load dynamic-link"
-    commands << "load cmake"
+    commands << "load cmake3"
 
     commands
   end
@@ -89,6 +89,8 @@ class WraprunFormula < Formula
     module-whatis "<%= @package.name %> <%= @package.version %>"
 
     module load dynamic-link
+
+    setenv W_UNSET_PRELOAD 1 
 
     <% if @builds.size > 1 %>
     <%= module_build_list @package, @builds %>
