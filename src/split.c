@@ -39,28 +39,26 @@ static MPI_Comm MPI_COMM_SPLIT;
 static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
                                   char *env_vars) {
   // Get file name from environment variable
-  char *file_name = getenv("WRAPRUN_FILE");
+  const char *const file_name = getenv("WRAPRUN_FILE");
   if(!file_name)
     EXIT_PRINT("%s environment variable not set, exiting!\n", "WRAPRUN_FILE");
 
   // Search file and read in rank'th line of file
-  FILE *file = NULL;
-  char *line = NULL;
-  size_t length = 0;
-  ssize_t char_count;
-
-  file = fopen(file_name, "r");
+  FILE *const file = fopen(file_name, "r");
   if(!file)
     EXIT_PRINT("Can't open %s\n", file_name);
 
+  char *line = NULL;
+
   for(int line_num=0; line_num<=rank; ++line_num) {
-    char_count = getline(&line, &length, file);
+    size_t length = 0;
+    const ssize_t char_count = getline(&line, &length, file);
     if(char_count == -1)
       EXIT_PRINT("Error reading rank %d info from %s\n", rank, file_name);
   }
 
   // Extract parameters
-  int num_params = sscanf(line, "%d %s %s", color, work_dir, env_vars);
+  const int num_params = sscanf(line, "%d %s %s", color, work_dir, env_vars);
   if(num_params == EOF)
     EXIT_PRINT("Error parsing file line\n");
 
@@ -68,21 +66,21 @@ static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
   fclose(file);
 }
 
-void SetSplitCommunicator(int color) {
-  int err = PMPI_Comm_split(MPI_COMM_WORLD, color, 0, &MPI_COMM_SPLIT);
+void SetSplitCommunicator(const int color) {
+  const int err = PMPI_Comm_split(MPI_COMM_WORLD, color, 0, &MPI_COMM_SPLIT);
   if(err != MPI_SUCCESS)
     EXIT_PRINT("Failed to split communicator: %d!\n", err);
 }
 
-void SetWorkingDirectory(char *work_dir) {
-  int err = chdir(work_dir);
+void SetWorkingDirectory(const char *const work_dir) {
+  const int err = chdir(work_dir);
   if(err)
     EXIT_PRINT("Failed to change working directory: %s!\n", strerror(errno));
 }
 
 // Set environment variables in env_vars string
 // with format "key1=value2;key2=value2"
-static void SetEnvironmentVaribles(char *env_vars) {
+static void SetEnvironmentVaribles(const char *const env_vars) {
   char *token;
 
   // environment variables are optional
@@ -92,9 +90,9 @@ static void SetEnvironmentVaribles(char *env_vars) {
   while ((token = strsep(&env_vars, ";")) != NULL) {
     char key[1024];
     char value[1024];
-    int num_components = sscanf(token, "%s=%s", key, value);
+    const int num_components = sscanf(token, "%s=%s", key, value);
     if(num_components == 2) {
-      int err = setenv(key, value, 1);
+      const int err = setenv(key, value, 1);
       if(err)
         EXIT_PRINT("Error setting environment variable: %s\n", strerror(errno));
     }
@@ -104,19 +102,18 @@ static void SetEnvironmentVaribles(char *env_vars) {
 }
 
 // Redirect stdout and stderr to file based upon color
-void SetStdOutErr(int color) {
-  char *job_id = getenv("PBS_JOBID");
+void SetStdOutErr(const int color) {
+  const char *const job_id = getenv("PBS_JOBID");
   char file_name[1024];
 
   sprintf(file_name, "%s_w_%d.out", job_id, color);
-  FILE *handle;
-  handle = freopen(file_name, "a", stdout);
-  if(!handle)
+  const FILE *const out_handle = freopen(file_name, "a", stdout);
+  if(!out_handle)
     EXIT_PRINT("Error setting stdout!\n");
 
   sprintf(file_name, "%s_w_%d.err", job_id, color);
-  handle = freopen(file_name, "a", stderr);
-  if(!handle)
+  const FILE *const err_handle = freopen(file_name, "a", stderr);
+  if(!err_handle)
     EXIT_PRINT("Error setting stderr\n");
 }
 
@@ -135,10 +132,10 @@ void SplitInit() {
   PMPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
   int color;
-  char *work_dir = calloc(2048, sizeof(char));
+  char *const work_dir = calloc(2048, sizeof(char));
   if(!work_dir)
     EXIT_PRINT("Error allocating work_dir memory!\n");
-  char *env_vars = calloc(4096, sizeof(char));
+  char *const env_vars = calloc(4096, sizeof(char));
   if(!env_vars)
     EXIT_PRINT("Error allocating env_vars memory!\n");
   env_vars[0] = '\0'; // "zero" out env_vars
@@ -177,7 +174,7 @@ int MPI_Init(int *argc, char ***argv) {
 }
 
 int MPI_Finalize() {
-  int err = PMPI_Comm_free(&MPI_COMM_SPLIT);
+  const int err = PMPI_Comm_free(&MPI_COMM_SPLIT);
   if(err != MPI_SUCCESS)
     EXIT_PRINT("Failed to free split communicator: %d !\n", err);
 
