@@ -18,7 +18,7 @@ Assuming that the module file created by the Smithy formula is used, or a simila
 ```
 $ module load wraprun
 $ wraprun -n 80 ./foo.out : -n 160 ./bar.out ...
-``
+```
 Note that each executable requires
 
 In addition to the standard process placement flags available to aprun the `--w-cd` flag can be set to change the current working directory for each executable:
