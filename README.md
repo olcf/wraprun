@@ -11,15 +11,18 @@ $ make
 $ make install
 ```
 Inside of `/path/to/install` a `bin` directory will be created containing the `wraprun` scripts and a `lib` directory will be created containing `libsplit.so`. The `WRAPRUN_PRELOAD` environment variable must be correctly set to point to `libsplit.so` and in the case of fortran applications `libfmpich.so` at runtime.
+e.g. `WRAPRUN_PRELOAD=/path/to/install/lib/libsplit.so:/path/to/mpi_install/lib/libfmpich.so`
+
+On some systems libfmpich has a programming environment specific suffix that must be taken into account:
+e.g. `WRAPRUN_PRELOAD=/path/to/install/lib/libsplit.so:/path/to/mpi_install/lib/libfmpich_pgi.so`
 
 ## To run:
-Assuming that the module file created by the Smithy formula is used, or a similar one create, running looks as such.
+Assuming that the module file created by the Smithy formula is used, or a similar one created, running looks as such.
 
 ```
 $ module load wraprun
 $ wraprun -n 80 ./foo.out : -n 160 ./bar.out ...
 ```
-Note that each executable requires
 
 In addition to the standard process placement flags available to aprun the `--w-cd` flag can be set to change the current working directory for each executable:
 ```
