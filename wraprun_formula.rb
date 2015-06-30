@@ -1,7 +1,9 @@
 class WraprunFormula < Formula
   homepage "https://github.com/olcf/wraprun"
+  url "https://github.com/olcf/wraprun/archive/v0.1.tar.gz"
   additional_software_roots [ config_value("lustre-software-root")[hostname] ]
   
+
   concern for_version("dev") do
     included do
       url "none"

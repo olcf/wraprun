@@ -30,10 +30,12 @@ $ wraprun -n 80 --w-cd /foo/dir ./foo.out : -n 160 --w-cd /bar/dir ./bar.out ...
 ```
 This is particularly useful for legacy Fortran applications that use hard coded input and output file names.
 
-Multiple instances of an application can be placed on a node using the `{}` snytax, for instance:
+Multiple instances of an application can be placed on a node using the `{}` syntax, for instance:
 ```
 $ wraprun -n {2,2,2} ./foo.out : ...
 ```
+In this case the number of allocated nodes must be at least equal to the sum of processes in curly brackets divided by the maximum number of processes per node.
+
 would launch 3 two-process instances of foo.out on a single node. This may also be combined with the `--w-cd` flag :
 ```
 $ wraprun -n {2,2,2} --w-cd {/foo/dir1,/foo/dir2,/foo/dir3} ./foo.out : ...
