@@ -273,6 +273,8 @@ class Arguments(object):
                 'the wraprun environment.')
         cli_parser.add_argument('--w-debug', dest='debug', action='store_true',
                 help='Show debugging information.')
+        cli_parser.add_argument('--w-roe', dest='redirect_stdout', action='store_true',
+                help='Redirect stdout and stderr for each MPI group to separate output files')
 
         self.wraprun, self._unprocessed = cli_parser.parse_known_args()
 
@@ -324,15 +326,23 @@ class Arguments(object):
         for group in self.groups:
             yield group.arg_string()
 
-    def _groups_arg_string(self):
+    def _groups_string(self):
         return ' : '.join(self._group_strings())
 
+    def _global_string(self):
+        return ' '.join(self.aprun)
+
+    def _prefix_string(self):
+        prefix = ''
+        if self.wraprun.redirect_stdout:
+            prefix += 'W_REDIRECT_OUTERR=1;'
+        return prefix
+
     def string(self):
-        arg_strings = {
-                'aprun': ' '.join(self.aprun),
-                'groups': self._groups_arg_string(),
-                }
-        return '{aprun} {groups}'.format(**arg_strings)
+        return '{prefix} {aprun} {groups}'.format(
+                prefix=self._prefix_string(),
+                aprun=self._global_string(),
+                groups= self._groups_string())
 
 class WraprunError(Exception):
     pass
