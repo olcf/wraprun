@@ -178,7 +178,7 @@ class Group(object):
     def _get_nsplit(self, parser):
         splits = set((len(arg) for arg, _ in self.scan_splits(parser) if len(arg) != 1))
         if len(splits) > 1:
-            raise GroupError('Inconsistent splits given {}'.format(splits))
+            raise GroupError('Inconsistent rank color memberships found {}'.format(splits))
         else:
             return max(splits) if splits else 1
 
@@ -273,6 +273,8 @@ class Arguments(object):
                 'the wraprun environment.')
         cli_parser.add_argument('--w-debug', dest='debug', action='store_true',
                 help='Show debugging information.')
+        cli_parser.add_argument('--w-roe', dest='redirect_stdout', action='store_true',
+                help='Redirect stdout and stderr for each MPI group to separate output files')
 
         self.wraprun, self._unprocessed = cli_parser.parse_known_args()
 
@@ -324,15 +326,16 @@ class Arguments(object):
         for group in self.groups:
             yield group.arg_string()
 
-    def _groups_arg_string(self):
+    def _groups_string(self):
         return ' : '.join(self._group_strings())
 
+    def _global_string(self):
+        return ' '.join(self.aprun)
+
     def string(self):
-        arg_strings = {
-                'aprun': ' '.join(self.aprun),
-                'groups': self._groups_arg_string(),
-                }
-        return '{aprun} {groups}'.format(**arg_strings)
+        return '{aprun} {groups}'.format(
+                aprun=self._global_string(),
+                groups=self._groups_string())
 
 class WraprunError(Exception):
     pass
@@ -343,17 +346,11 @@ File = namedtuple('File', ['fd', 'path'])
 class Wraprun(object):
     def __init__(self):
         self.args = Arguments()
-class Wraprun(object):
-    def __init__(self):
-        self.args = Arguments()
         self.groups = self.args.groups
 
         self._file = File(fd=None, path=None)
         self._job_id = None
-        self.env = {
-                'LD_PRELOAD': self._set_preload_path(),
-                'WRAPRUN_FILE': self.file.path,
-                }
+        self.env = self._make_env()
     
     @property
     def job_id(self):
@@ -420,12 +417,17 @@ class Wraprun(object):
                 for rank in group.ranks:
                     f.write(rank.string() + "\n")
 
-    def _set_preload_path(self):
+    def _make_env(self):
+        env = {}
         if 'WRAPRUN_PRELOAD' not in os.environ.keys():
             log('WARNING', 'Environment variable WRAPRUN_PRELOAD not set. '
                 'Using alternate MPI wrapper.')
-        return os.environ.pop('WRAPRUN_PRELOAD',
+        env['LD_PRELOAD'] = os.environ.pop('WRAPRUN_PRELOAD',
                 '/lustre/atlas/proj-shared/stf007/libsplit.so')
+        env['WRAPRUN_FILE'] = self.file.path
+        if self.args.wraprun.redirect_stdout:
+            env['W_REDIRECT_OUTERR'] = '1'
+        return env
 
     def _env_strings(self):
         '''Return the set of shell-evaluable strings needed to
