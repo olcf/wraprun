@@ -178,7 +178,7 @@ class Group(object):
     def _get_nsplit(self, parser):
         splits = set((len(arg) for arg, _ in self.scan_splits(parser) if len(arg) != 1))
         if len(splits) > 1:
-            raise GroupError('Inconsistent splits given {}'.format(splits))
+            raise GroupError('Inconsistent rank color memberships found {}'.format(splits))
         else:
             return max(splits) if splits else 1
 
