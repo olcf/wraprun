@@ -2,6 +2,7 @@ class WraprunFormula < Formula
   homepage "https://github.com/olcf/wraprun"
   url "https://github.com/olcf/wraprun/archive/v0.1.tar.gz"
   additional_software_roots [ config_value("lustre-software-root")[hostname] ]
+  
 
   concern for_version("dev") do
     included do
@@ -66,7 +67,7 @@ class WraprunFormula < Formula
     commands << "swap intel cray/#{$1}" if build_name =~ /cray([\d\.]+)/
 
     commands << "load dynamic-link"
-    commands << "load cmake"
+    commands << "load cmake3"
 
     commands
   end
@@ -91,6 +92,8 @@ class WraprunFormula < Formula
 
     module load dynamic-link
 
+    setenv W_UNSET_PRELOAD 1 
+
     <% if @builds.size > 1 %>
     <%= module_build_list @package, @builds %>
 
@@ -99,7 +102,7 @@ class WraprunFormula < Formula
     set PREFIX <%= @package.prefix %>
     <% end %>
 
-    set LUSTREPREFIX /lustre/atlas/sw/xk7/$BUILD
+    set LUSTREPREFIX /lustre/atlas/sw/xk7/<%= @package.name %>/<%= @package.version %>/$BUILD
 
     prepend-path PATH             $PREFIX/bin
     prepend-path LD_LIBRARY_PATH  $PREFIX/lib
