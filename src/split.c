@@ -22,6 +22,18 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
 
+/*
+  libsplit is a library designed to split MPI_COMM_WORLD into multiple smaller
+  communicators. Upon calling MPI_Init() the file pointed to by the WRAPRUN_FILE
+  environment variable is opened and the contents read. This file content is parsed
+  to determine the ranks particular color as well as the desired working directory
+  and process specific environment variables.
+
+  The color is used to create the MPI_COMM_SPLIT communicator. All MPI* functions
+  containing a communicator are provided and anytime MPI_COMM_WORLD is passed
+  in it will be switched out for MPI_COMM_SPLIT before calling PMPI*
+*/
+
 #define _GNU_SOURCE // RTLD_NEXT, must define this before ANY standard header
 #include <dlfcn.h>  // dlsym()
 
@@ -35,7 +47,8 @@ THE SOFTWARE.
 
 static MPI_Comm MPI_COMM_SPLIT;
 
-// Parse color, work_dir, env_vars from wraprun file
+// Reads in rank line of WRAPRUN_FILE
+// space seperated values are parsed to set color, work_dir, and env_vars
 static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
                                   char *env_vars) {
   // Get file name from environment variable
@@ -157,7 +170,6 @@ void SplitInit() {
 
 int MPI_Init(int *argc, char ***argv) {
   // Allow MPI_Init to be called directly
-  // This was added as Cray may do something special in MPI_Init
   int return_value;
   if (getenv("W_UNWRAP_INIT")) {
     DEBUG_PRINT("Unwrapped!\n");
@@ -178,6 +190,7 @@ int MPI_Finalize() {
   if(err != MPI_SUCCESS)
     EXIT_PRINT("Failed to free split communicator: %d !\n", err);
 
+  // Allow MPI_Finalize to be called directly
   int return_value;
   if (getenv("W_UNWRAP_FINALIZE")) {
     DEBUG_PRINT("Unwrapped!\n");

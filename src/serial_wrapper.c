@@ -22,6 +22,14 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 */
 
+/*
+  serial_wrapper take as it's first argument an executable and optionally the
+  passed in executables arguments. After initializing MPI serial_wrapper forks
+  and the executable passed in as the first argument is executed. Once the forked
+  process completes serial_wrapper calls MPI_Finalize to ensure all MPI processes
+  have completed before exiting.
+*/
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -37,7 +45,9 @@ int main(int argc, char **argv) {
   char **new_argv = &argv[1];
   int new_argc = argc - 1;
 
+  // Unset LD_PRELOAD env variable as it causes Cray's to have trouble with fork
   setenv("W_UNSET_PRELOAD", "1", 1);
+
   MPI_Init(&new_argc, &new_argv);
 
   int child_status;
