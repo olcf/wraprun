@@ -1,19 +1,19 @@
 #!/usr/bin/env python
 
 # The MIT License (MIT)
-# 
+#
 # Copyright (c) 2015 M. Belhorn
-# 
+#
 # Permission is hereby granted, free of charge, to any person obtaining a copy
 # of this software and associated documentation files (the "Software"), to deal
 # in the Software without restriction, including without limitation the rights
 # to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 # copies of the Software, and to permit persons to whom the Software is
 # furnished to do so, subject to the following conditions:
-# 
+#
 # The above copyright notice and this permission notice shall be included in
 # all copies or substantial portions of the Software.
-# 
+#
 # THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 # IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 # FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -23,34 +23,41 @@
 # THE SOFTWARE.
 
 '''
-This module provides functions for setting the environment needed to run A.
-Simpson's MPI wrapper for calling independent MPI programs in apruns MPMD mode.
+This module provides a command for constructing a the command line call needed
+to run independent programs in aprun's MPMD-mode with A. Simpson's MPI wrapper.
 
-The main function expects an aprun MPMD mode argument string. See the aprun man
-page for details.
+The main command expects an aprun MPMD-mode argument string. See the aprun man
+page for details. The following nomeclature is assumed in this module given an
+aprun call of the form:
 
-The rank IDs of the MPI processing elements (PEs) for each independent MPI
-executable in the aprun call (which share a common MPI_COM_WORLD) are
-extracted, grouped, and formed into environment variable strings compatible with
-the MPI wrapper.
+    wraprun [GlobalOptions] Group [ : Group]...
 
-For a program running on N PEs, each PE with MPI_COM_WORLD rank RID is granted
-an environment variable containing all the associated rank IDs (RID_X) in the
-same group.  The environment variables take the form
+Each "Group" consists of arguments in the form:
 
-  WRAPRUN_${RID}="$RID_1 RID_2 ... RID_N"
+    -n PE1[,PE2]... [GroupOptions] prog [ProgOptions]
 
-The function then constructs a string that sets the rank group and MPI wrapper
-LD_PRELOAD environment variables and appends the aprun call. The string is
-printed to STDOUT which can be evaluated by a calling shell in order to preserve
-shell redirection and backgrounding in PBS submission scripts.  '''
+The global options allowed include all MPMD mode aprun options and all wraprun
+global options. The aprun '-b' flag is explicitly added if missing.
+
+Group options consist of the allowed MPMD-mode per-executable aprun options as
+well as group-specific wraprun options. Each group is required to use the aprun
+'-n' flag to specify the number of processing elements. If a comma-separated
+list of integers is passed to '-n', the MPI ranks created for that group will be
+'split' or divided amongst a number of MPI 'colors' such that multiple
+independent parallel instances of prog can run on the same compute node.
+
+For each MPI rank started by aprun, a line is added to a file in which runtime
+details for the rank are passed to the MPI wrapper.
+
+The command line string is printed to STDOUT which can be evaluated by the
+parent shell in order to preserve shell redirection and backgrounding in PBS
+submission scripts.
+'''
 
 from __future__ import print_function
 import os
-import sys
 
-
-VERBOSE=False
+VERBOSE = False
 
 def echo(string):
     '''Print string wrapped in echo so receiving shell doesn't attempt to
@@ -67,82 +74,120 @@ def log(lvl, msg):
 
 
 
+class WraprunError(Exception):
+    '''Class for managing wraprun-specific errors.'''
+    pass
+
 
 import argparse
 class Rank(object):
+    '''Information about ranks within an MPMD executable group.
 
+    Stores the CWD and color of an MPI rank.
+    '''
     # Ordered tuple of keys in output file lines.
     FILE_CONTENT = (
-            'color',
-            'path',
-            )
+        'color',
+        'path',
+        )
 
     FILE_FORMAT = ' '.join(('{{{0}}}'.format(k) for k in FILE_CONTENT))
 
     def __init__(self, rank, color, **kwargs):
+        '''Store data to be written to the rank parameters file.'''
         self.rank = rank
         self._data = {
-                'color': color,
-                'path': './', 
-                }
+            'color': color,
+            'path': './',
+            }
         self._data.update(kwargs)
 
     def string(self):
+        '''Return a rank data string for writing to the rank parameters file.'''
         return Rank.FILE_FORMAT.format(**self._data)
 
     @property
     def color(self):
+        '''Return the rank 'color' integer.'''
         return self._data['color']
 
 
 
 class ArgAction(argparse.Action):
+    '''Base class for custom group argument argparse Actions.'''
     def __init__(self, *args, **kwargs):
+        '''Create arparse.Action.'''
         super(ArgAction, self).__init__(*args, **kwargs)
         self.split = False
         self.cli = None
-        
+
     def __call__(self, parser, namespace, values, option_string=None):
+        '''Used by Argparse to process arguments.'''
         setattr(namespace, self.dest, values)
         self.cli = [option_string, values]
-    
+
 class FlagAction(ArgAction):
+    '''Argparse action to processes MPMD group 'flag'-type arguments.'''
     def __init__(self, *args, **kwargs):
+        '''Create arparse.Action for processing flag-type argument.'''
         default = kwargs.pop('default', False)
         nargs = kwargs.pop('nargs', 0)
-        super(FlagAction, self).__init__(*args, default=default, nargs=0, **kwargs)
-        
+        if nargs != 0:
+            log('DEBUG',
+                'Assuming flag is meant to consume no additional args.')
+        super(FlagAction, self).__init__(
+            *args, default=default, nargs=0, **kwargs)
+
     def __call__(self, parser, namespace, values, option_string=None):
+        '''Used by Argparse to process arguments.'''
         setattr(namespace, self.dest, values)
         self.cli = [option_string]
-    
+
 class PesAction(ArgAction):
+    '''Argparse action to process MPMD group "Processing Elements" (PES).
+
+    Looks for rank colorsplitting as comma-separated integer lists of the form
+        '-n x[,y]...'
+    where 'x' and 'y' are integers.
+    '''
     def __init__(self, *args, **kwargs):
+        '''Create arparse.Action for processing PES argument.'''
         super(PesAction, self).__init__(*args, **kwargs)
         self.split = True
-        
+
     def __call__(self, parser, namespace, values, option_string=None):
-        v = [int(i) for i in values.split(',')]
-        setattr(namespace, self.dest, v)
-        self.cli = [option_string, str(sum(v))]
-    
+        '''Used by Argparse to process arguments.'''
+        ranks_per_color = [int(i) for i in values.split(',')]
+        setattr(namespace, self.dest, ranks_per_color)
+        self.cli = [option_string, str(sum(ranks_per_color))]
+
 class PathAction(ArgAction):
+    '''Argparse action to process MPMD group CWD '--w-cd' arguments.
+
+    Looks for rank colorsplitting as comma-separated path lists of the form
+      --w-cd path1[,path2]...'
+    where the paths cannot contain ','.
+    '''
     def __init__(self, *args, **kwargs):
+        '''Create arparse.Action for processing group CWD argument.'''
         super(PathAction, self).__init__(*args, **kwargs)
         self.split = True
         self.is_aprun_arg = False
-        
+
     def __call__(self, parser, namespace, values, option_string=None):
-        v = [i for i in values.split(',')]
-        setattr(namespace, self.dest, v)
-
-
-class GroupError(Exception):
-    pass
+        '''Used by Argparse to process arguments.'''
+        paths_by_color = [i for i in values.split(',')]
+        setattr(namespace, self.dest, paths_by_color)
 
 
 class Group(object):
-    def __init__(self, arg_list, id, first_color, first_rank):
+    '''MPMD mode executable group parameters from group argument list.'''
+    def __init__(self, arg_list, first_color, first_rank):
+        '''Parse group argument list.
+
+        Ranks and colors are specified by the group arguments are enumerated
+        from first_color and first_rank.
+        '''
         wparser = argparse.ArgumentParser(add_help=False)
         # Aprun options (2015/06/25):
         # FIXME: '-b' should be parsed in Arguments class with global aprun
@@ -165,29 +210,43 @@ class Group(object):
         self.wraprun = wparser.parse_args(arg_list)
         self.nsplits = self._get_nsplit(wparser)
         self._scale_split_args(wparser)
-        
+
         self.ranks = self._set_ranks(first_rank, first_color)
-        self.cli_arglist = [s for a in wparser._actions if getattr(a, 'cli', None) is not None for s in a.cli] + self.wraprun.exe
-        
+        self.cli_arglist = [
+            s for a in wparser._actions
+            if getattr(a, 'cli', None) is not None
+            for s in a.cli] + self.wraprun.exe
+
     def scan_splits(self, parser):
+        '''Iterate through arguments that split PEs into colors.'''
         for action in parser._actions:
-            v = getattr(self.wraprun, action.dest, None)
-            if getattr(action, 'split', False) and v is not None:
-                yield v, action
+            value = getattr(self.wraprun, action.dest, None)
+            if getattr(action, 'split', False) and value is not None:
+                yield value, action
 
     def _get_nsplit(self, parser):
+        '''Return the number of rank colors specified by arguments that can
+        trigger color splits.
+
+        If more than 1 non-singular split is specified, an error is raised.
+        '''
         splits = set((len(arg) for arg, _ in self.scan_splits(parser) if len(arg) != 1))
         if len(splits) > 1:
-            raise GroupError('Inconsistent rank color memberships found {}'.format(splits))
+            raise WraprunError(
+                'Inconsistent rank color memberships found {}'.format(splits))
         else:
             return max(splits) if splits else 1
 
     def _scale_split_args(self, parser):
-        for v, action in self.scan_splits(parser):
-            if len(v) != self.nsplits:
-                setattr(self.wraprun, action.dest, v * self.nsplits) 
+        '''Set the number of processing elements started by the group to the sum
+        of ranks across all colors.
+        '''
+        for value, action in self.scan_splits(parser):
+            if len(value) != self.nsplits:
+                setattr(self.wraprun, action.dest, value * self.nsplits)
 
     def _set_ranks(self, first_rank, first_color):
+        '''Return a list of all ranks started by the group.'''
         ranks = []
         for subgroup_id, n_pes_in_sg in enumerate(self.wraprun.pes):
             color = first_color + subgroup_id
@@ -199,14 +258,17 @@ class Group(object):
 
     @property
     def last_color(self):
+        '''Return the color of the last rank in the group.'''
         return self.ranks[-1].color
 
     @property
     def last_rank(self):
+        '''Return the last rank in the group.'''
         return self.ranks[-1].rank
 
     @property
     def total_pes(self):
+        '''Return the total number of processing elements in the group.'''
         return sum(self.wraprun.pes)
 
     def has_arg(self, arg):
@@ -214,6 +276,7 @@ class Group(object):
         return True if getattr(self.wraprun, arg, None) is not None else False
 
     def arg_string(self):
+        '''Return the aprun command line string representing the group.'''
         return ' '.join(self.cli_arglist)
 
 
@@ -223,58 +286,69 @@ class Arguments(object):
     REQUIRED_APRUN_ARGS = {'bypass':None,}
 
     def __init__(self):
+        '''Parse the command line arguments passed to wraprun.'''
         self._args = {
-                "wraprun": None,
-                "aprun": None,
-                "groups": None,
-                "unprocessed": None,
-                }
+            "wraprun": None,
+            "aprun": None,
+            "groups": None,
+            "unprocessed": None,
+            }
         self._parse_cli()
         self._parse_groups()
         self._parse_global_args()
 
     @property
     def wraprun(self):
+        '''Return the global wraprun-specific arguments namespace.'''
         return self._args["wraprun"]
 
     @wraprun.setter
     def wraprun(self, namespace):
+        '''Set the global wraprun-specific arguments namespace.'''
         self._args["wraprun"] = namespace
 
     @property
     def groups(self):
+        '''Return the list of groups.'''
         return self._args["groups"]
 
     @groups.setter
     def groups(self, group_list):
+        '''Set the list of groups.'''
         self._args["groups"] = group_list
 
     @property
     def aprun(self):
+        '''Return the global aprun-specific arguments.'''
         return self._args["aprun"]
 
     @aprun.setter
     def aprun(self, aprun_global_arglist):
+        '''Set the global aprun-specific arguments.'''
         self._args["aprun"] = aprun_global_arglist
 
     @property
     def _unprocessed(self):
+        '''Return the list of unprocessed argument strings.'''
         return self._args["unprocessed"]
 
     @_unprocessed.setter
     def _unprocessed(self, arglist):
+        '''Set the list of unprocessed argument strings.'''
         self._args["unprocessed"] = arglist
 
     def _parse_cli(self):
         '''Parse CLI arguments for wraprun specific options and aprun specific
         arguments.'''
         cli_parser = argparse.ArgumentParser(
-                description='Generates shell-evaluable string to set '
-                'the wraprun environment.')
-        cli_parser.add_argument('--w-debug', dest='debug', action='store_true',
-                help='Show debugging information.')
-        cli_parser.add_argument('--w-roe', dest='redirect_stdout', action='store_true',
-                help='Redirect stdout and stderr for each MPI group to separate output files')
+            description='Generates shell-evaluable string to set '
+            'the environment and call wrapped aprun in MPMD-mode.')
+        cli_parser.add_argument(
+            '--w-debug', dest='debug', action='store_true',
+            help='Show debugging information.')
+        cli_parser.add_argument(
+            '--w-roe', dest='redirect_stdout', action='store_true',
+            help='Redirect stdout and stderr for each MPI group to separate output files')
 
         self.wraprun, self._unprocessed = cli_parser.parse_known_args()
 
@@ -283,6 +357,7 @@ class Arguments(object):
         VERBOSE = self.wraprun.debug
 
     def _group_arglists(self):
+        '''Iterate by group through the lists of group argument string.'''
         arglist = self._unprocessed
         start = 0
         try:
@@ -299,63 +374,70 @@ class Arguments(object):
         yield arglist[start:]
 
     def _parse_groups(self):
+        '''Parse each group arguments and set the list of groups.'''
         self.groups = []
         groups = self.groups
         starting_color = 0
         starting_rank = 0
-        for id, group_args in enumerate(self._group_arglists()):
-            group = Group(group_args, id, starting_color, starting_rank)
+        for group_args in self._group_arglists():
+            group = Group(group_args, starting_color, starting_rank)
             groups.append(group)
             starting_color = group.last_color + 1
             starting_rank = group.last_rank + 1
 
     def _parse_global_args(self):
+        '''Parse the global arguments caught in the first group.'''
         first_group = self.groups[0]
         args = ['aprun']
         for arg, value in self.REQUIRED_APRUN_ARGS.items():
             if not first_group.has_arg(arg):
                 log('WARNING',
-                        "Adding required aprun argument '{a}'.".format(a=arg))
+                    "Adding required aprun argument '{a}'.".format(a=arg))
                 args.append(arg)
                 if value is not None:
                     args.append(arg)
         self.aprun = args
 
-    # TODO: These methods need to be optimized for reduced memory use and speed.
     def _group_strings(self):
+        '''Iterate over the group command line strings by group.'''
         for group in self.groups:
             yield group.arg_string()
 
     def _groups_string(self):
+        '''Return the command line string representing all the groups.'''
         return ' : '.join(self._group_strings())
 
     def _global_string(self):
+        '''Return the command line string of the aprun global options.'''
         return ' '.join(self.aprun)
 
     def string(self):
+        '''Return the aprun command line string.'''
         return '{aprun} {groups}'.format(
-                aprun=self._global_string(),
-                groups=self._groups_string())
-
-class WraprunError(Exception):
-    pass
+            aprun=self._global_string(),
+            groups=self._groups_string())
 
 from collections import namedtuple
-File = namedtuple('File', ['fd', 'path'])
+File = namedtuple('File', ['descriptor', 'path'])
 
 class Wraprun(object):
+    '''A class for translating wraprun arguments into the files, environment
+    variables and cli call strings needed to run indpendent programs using
+    aprun in MPMD-mode.
+    '''
     def __init__(self):
+        '''Initialize the data needed to call aprun with the MPI wrapper.'''
         self.args = Arguments()
         self.groups = self.args.groups
 
-        self._file = File(fd=None, path=None)
+        self._file = File(descriptor=None, path=None)
         self._job_id = None
         self.env = self._make_env()
-    
+
     @property
     def job_id(self):
         '''Determine PBS job ID from the environment.
-        
+
         If not available (for instance if called outside a PBS script), an error
         is raised unless the script is run with debugging flags.
         '''
@@ -376,7 +458,7 @@ class Wraprun(object):
         if self.job_id != '000000':
             import subprocess
             qstat = subprocess.Popen(
-                    ['qstat', '-f', self.job_id], stdout=subprocess.PIPE)
+                ['qstat', '-f', self.job_id], stdout=subprocess.PIPE)
             for line in qstat.stdout.readlines():
                 if 'Account_Name' in line:
                     account = (line[19:-1]).lower()
@@ -392,38 +474,41 @@ class Wraprun(object):
 
     @property
     def file(self):
+        '''Return the File object for storing the wrapper rank parameters.'''
         if self._file.path is None:
             import tempfile
-            dir = os.path.join(
-                    os.environ["MEMBERWORK"],
-                    self._get_account(),
-                    ".wraprun")
+            dir_path = os.path.join(
+                os.environ["MEMBERWORK"],
+                self._get_account(),
+                ".wraprun")
             try:
-                os.makedirs(dir, 0700)
+                os.makedirs(dir_path, 0700)
             except OSError as err:
                 if err.errno is not 17:
                     raise
-            fd, path = tempfile.mkstemp(
-                    prefix='tmp{job}_'.format(job=self.job_id),
-                    suffix='.wraprun',
-                    dir=dir, text=True)
-            self._file = File(fd, path)
+            descriptor, path = tempfile.mkstemp(
+                prefix='tmp{job}_'.format(job=self.job_id),
+                suffix='.wraprun',
+                dir=dir_path, text=True)
+            self._file = File(descriptor, path)
         return self._file
-   
+
     def _write_data_file(self):
         '''Generate the data for each rank to be written to the tmp file.'''
-        with os.fdopen(self.file.fd, 'a') as f:
+        with os.fdopen(self.file.descriptor, 'a') as rank_file:
             for group in self.groups:
                 for rank in group.ranks:
-                    f.write(rank.string() + "\n")
+                    rank_file.write(rank.string() + "\n")
 
     def _make_env(self):
+        '''Return a dictionary of environment variables needed to call aprun.'''
         env = {}
         if 'WRAPRUN_PRELOAD' not in os.environ.keys():
             log('WARNING', 'Environment variable WRAPRUN_PRELOAD not set. '
                 'Using alternate MPI wrapper.')
-        env['LD_PRELOAD'] = os.environ.pop('WRAPRUN_PRELOAD',
-                '/lustre/atlas/proj-shared/stf007/libsplit.so')
+        env['LD_PRELOAD'] = os.environ.pop(
+            'WRAPRUN_PRELOAD',
+            '/lustre/atlas/proj-shared/stf007/libsplit.so')
         env['WRAPRUN_FILE'] = self.file.path
         if self.args.wraprun.redirect_stdout:
             env['W_REDIRECT_OUTERR'] = '1'
@@ -437,6 +522,7 @@ class Wraprun(object):
             yield 'export {key}="{value}"'.format(key=key, value=value)
 
     def eval(self):
+        '''Print a shell-evaluable string that will launch aprun.'''
         self._write_data_file()
         for env in self._env_strings():
             print(env, end=';')
@@ -459,11 +545,11 @@ def main():
 
     if wraprun.args.wraprun.debug:
         log('DEBUG', 'Contents of output file:')
-        with open(wraprun.file.path) as f:
+        with open(wraprun.file.path) as rank_file:
             width = len(str(wraprun.groups[-1].last_rank))
-            for ln, line in enumerate(f):
+            for line_number, line in enumerate(rank_file):
                 log('DEBUG', '  {ln:0{width}d}|{line}'.format(
-                    ln=ln, width=width, line=line[:-1]))
+                    ln=line_number, width=width, line=line[:-1]))
 
 
 
