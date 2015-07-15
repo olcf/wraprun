@@ -63,7 +63,8 @@ static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
 
   char *line = NULL;
 
-  for(int line_num=0; line_num<=rank; ++line_num) {
+  int line_num;
+  for(line_num=0; line_num<=rank; ++line_num) {
     size_t length = 0;
     const ssize_t char_count = getline(&line, &length, file);
     if(char_count == -1)
@@ -93,7 +94,7 @@ void SetWorkingDirectory(const char *const work_dir) {
 
 // Set environment variables in env_vars string
 // with format "key1=value2;key2=value2"
-static void SetEnvironmentVaribles(const char *const env_vars) {
+static void SetEnvironmentVaribles(char *env_vars) {
   char *token;
 
   // environment variables are optional
@@ -894,6 +895,7 @@ int MPI_Abort(MPI_Comm comm, int errorcode) {
   return PMPI_Abort(correct_comm, errorcode);
 }
 
+/*
 int MPI_DUP_FN(MPI_Comm comm, int key, void *extra,
         void *attrin, void *attrout, int *flag) {
   DEBUG_PRINT("Wrapped!\n");
@@ -902,6 +904,7 @@ int MPI_DUP_FN(MPI_Comm comm, int key, void *extra,
 
   return PMPI_DUP_FN(correct_comm, key, extra, attrin, attrout, flag);
 }
+*/
 
 int MPI_Comm_connect(const char *port_name, MPI_Info info, int root, MPI_Comm comm,
                      MPI_Comm *newcomm) {

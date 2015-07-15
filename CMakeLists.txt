@@ -5,8 +5,6 @@ if(CMAKE_BUILD_TYPE MATCHES "Debug")
   add_definitions(-DDEBUG=1)
 endif()
 
-set(CMAKE_C_STANDARD 99)
-
 # Shared split library
 add_library(split SHARED src/split.c)
 set_target_properties(split PROPERTIES POSITION_INDEPENDENT_CODE TRUE)
