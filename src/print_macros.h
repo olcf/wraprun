@@ -1,5 +1,5 @@
-#ifndef SPH_SRC_DEBUG_H_
-#define SPH_SRC_DEBUG_H_
+#ifndef WRAPRUN_SRC_PRINTMACROS_H_
+#define WRAPRUN_SRC_PRINTMACROS_H_
 
 #include <stdio.h>
 #include <errno.h>
