@@ -46,10 +46,9 @@ For non MPI executables a wrapper application, `serial` is provided, this ensure
 $ wraprun -n 1 serial ./foo.out -foo_args : ...
 ```
 
-By default all wraprun application's `stdout/err` will be directed to the same file, this if often not desirable. Setting the `W_REDIRECT_OUTERR` environment variable will cause each executable to redirect it's output to a unique file in the current working directory:
+By default all wraprun application's `stdout/err` will be directed to the same file, this if often not desirable. Setting the `--w-roe` flag will cause each executable to redirect it's output to a unique file in the current working directory:
 ```
-$ export W_REDIRECT_OUTERR=1
-$ wraprun -n 1 ./foo.out: ...
+$ wraprun --w-roe -n 1 ./foo.out: ...
 ```
 
 ## Notes
