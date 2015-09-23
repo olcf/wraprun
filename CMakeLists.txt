@@ -1,5 +1,5 @@
 project(LibSplit)
-#cmake_minimum_required(VERSION 3.1)
+cmake_minimum_required(VERSION 3.1)
 
 if(CMAKE_BUILD_TYPE MATCHES "Debug")
   add_definitions(-DDEBUG=1)
