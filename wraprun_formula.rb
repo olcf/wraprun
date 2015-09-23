@@ -101,13 +101,8 @@ class WraprunFormula < Formula
     set PREFIX <%= @package.prefix %>
     <% end %>
 
-    set LUSTREPREFIX /lustre/atlas/sw/xk7/<%= @package.name %>/<%= @package.version %>/$BUILD
-
     prepend-path PATH             $PREFIX/bin
     prepend-path LD_LIBRARY_PATH  $PREFIX/lib
-
-    prepend-path PATH             $LUSTREPREFIX/bin
-    prepend-path LD_LIBRARY_PATH  $LUSTREPREFIX/lib
 
     # The libfmpich library is suffixed with the PE name, so we must extract it
     set compiler $env(PE_ENV)
@@ -122,7 +117,7 @@ class WraprunFormula < Formula
       }
     }
 
-    setenv WRAPRUN_PRELOAD $libmpichf:$LUSTREPREFIX/lib/libsplit.so
+    setenv WRAPRUN_PRELOAD $libmpichf:$PREFIX/lib/libsplit.so
 
   MODULEFILE
 end
