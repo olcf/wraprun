@@ -186,6 +186,23 @@ int MPI_Init(int *argc, char ***argv) {
   return return_value;
 }
 
+int MPI_Init_thread(int *argc, char ***argv, int required, int *provided) {
+  // Allow MPI_Init_thread to be called directly
+  int return_value;
+  if (getenv("W_UNWRAP_INIT")) {
+    DEBUG_PRINT("Unwrapped!\n");
+    int (*real_MPI_Init_thread)(int*, char***, int, int*) = dlsym(RTLD_NEXT, "MPI_Init_thread");
+    return_value = (*real_MPI_Init_thread)(argc, argv, required, provided);
+  }
+  else {
+    DEBUG_PRINT("Wrapped!\n");
+    return_value = PMPI_Init_thread(argc, argv, required, provided);
+  }
+
+  SplitInit();
+  return return_value;
+}
+
 int MPI_Finalize() {
   const int err = PMPI_Comm_free(&MPI_COMM_SPLIT);
   if(err != MPI_SUCCESS)
