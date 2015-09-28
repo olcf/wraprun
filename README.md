@@ -30,15 +30,16 @@ $ wraprun -n 80 --w-cd /foo/dir ./foo.out : -n 160 --w-cd /bar/dir ./bar.out ...
 ```
 This is particularly useful for legacy Fortran applications that use hard coded input and output file names.
 
-Multiple instances of an application can be placed on a node using the `{}` syntax, for instance:
+Multiple instances of an application can be placed on a node using
+comma-separated PES syntax `PES1,PES2,...,PESN` syntax, for instance:
 ```
-$ wraprun -n {2,2,2} ./foo.out : ...
+$ wraprun -n 2,2,2 ./foo.out : ...
 ```
-In this case the number of allocated nodes must be at least equal to the sum of processes in curly brackets divided by the maximum number of processes per node.
+In this case the number of allocated nodes must be at least equal to the sum of processes in the comma-separated list of processing elements divided by the maximum number of processes per node.
 
 would launch 3 two-process instances of foo.out on a single node. This may also be combined with the `--w-cd` flag :
 ```
-$ wraprun -n {2,2,2} --w-cd {/foo/dir1,/foo/dir2,/foo/dir3} ./foo.out : ...
+$ wraprun -n 2,2,2 --w-cd /foo/dir1,/foo/dir2,/foo/dir3 ./foo.out : ...
 ```
 
 For non MPI executables a wrapper application, `serial` is provided, this ensures that all executables will run to completion before aprun exits. To use place `serial` in front of your application and arguments:
