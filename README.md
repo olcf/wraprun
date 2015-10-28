@@ -35,19 +35,21 @@ comma-separated PES syntax `PES1,PES2,...,PESN` syntax, for instance:
 ```
 $ wraprun -n 2,2,2 ./foo.out : ...
 ```
-In this case the number of allocated nodes must be at least equal to the sum of processes in the comma-separated list of processing elements divided by the maximum number of processes per node.
-
 would launch 3 two-process instances of foo.out on a single node. This may also be combined with the `--w-cd` flag :
 ```
+In this case the number of allocated nodes must be at least equal to the sum of processes in the comma-separated list of processing elements divided by the maximum number of processes per node.
+
+This may also be combined with the `--w-cd` flag :
+
 $ wraprun -n 2,2,2 --w-cd /foo/dir1,/foo/dir2,/foo/dir3 ./foo.out : ...
 ```
 
-For non MPI executables a wrapper application, `serial` is provided, this ensures that all executables will run to completion before aprun exits. To use place `serial` in front of your application and arguments:
+For non MPI executables a wrapper application, `serial`, is provided. This wrapper ensures that all executables will run to completion before aprun exits. To use place, `serial` in front of your application and arguments:
 ```
 $ wraprun -n 1 serial ./foo.out -foo_args : ...
 ```
 
-By default all wraprun application's `stdout/err` will be directed to the same file, this if often not desirable. Setting the `--w-roe` flag will cause each executable to redirect it's output to a unique file in the current working directory:
+By default all wraprun application's `stdout/err` will be directed to the same file, this if often not desirable. Setting the `--w-roe` flag will cause each executable to redirect its output to a unique file in the current working directory:
 ```
 $ wraprun --w-roe -n 1 ./foo.out: ...
 ```
@@ -57,7 +59,7 @@ $ wraprun --w-roe -n 1 ./foo.out: ...
 	* On Titan this can be accomplished by loading the dynamic-link module before invoking the Cray compile wrappers `CC`,`cc`, `ftn`.
   * The library may be statically linked although this is not fully supported.
 
-* All executables must reside in a compute mode visible filesystem, e.g. Lustre. Executables will not be copied as they normally are.
+* All executables must reside in a compute node visible filesystem, e.g. Lustre. Executables will not be copied as they normally are.
 
 
 ## Disclaimer
