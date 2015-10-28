@@ -44,7 +44,7 @@ This may also be combined with the `--w-cd` flag :
 $ wraprun -n 2,2,2 --w-cd /foo/dir1,/foo/dir2,/foo/dir3 ./foo.out : ...
 ```
 
-For non MPI executables a wrapper application, `serial`, is provided. This wrapper ensures that all executables will run to completion before aprun exits. To use place, `serial` in front of your application and arguments:
+For non MPI executables a wrapper application, `serial`, is provided. This wrapper ensures that all executables will run to completion before aprun exits. To use, place `serial` in front of your application and arguments:
 ```
 $ wraprun -n 1 serial ./foo.out -foo_args : ...
 ```
@@ -55,7 +55,7 @@ $ wraprun --w-roe -n 1 ./foo.out: ...
 ```
 
 ## Notes
-* It is recommended that applications be dynamically linked
+* It is recommended that applications be dynamically linked.
 	* On Titan this can be accomplished by loading the dynamic-link module before invoking the Cray compile wrappers `CC`,`cc`, `ftn`.
   * The library may be statically linked although this is not fully supported.
 
