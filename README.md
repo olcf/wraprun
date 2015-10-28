@@ -40,7 +40,7 @@ would launch 3 two-process instances of foo.out on a single node.
 In this case the number of allocated nodes must be at least equal to the sum of processes in the comma-separated list of processing elements divided by the maximum number of processes per node.
 
 This may also be combined with the `--w-cd` flag :
-
+```
 $ wraprun -n 2,2,2 --w-cd /foo/dir1,/foo/dir2,/foo/dir3 ./foo.out : ...
 ```
 
