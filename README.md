@@ -17,7 +17,7 @@ On some systems libfmpich has a programming environment specific suffix that mus
 e.g. `WRAPRUN_PRELOAD=/path/to/install/lib/libsplit.so:/path/to/mpi_install/lib/libfmpich_pgi.so`
 
 ## To run:
-Assuming that the module file created by the Smithy formula is used, or a similar one created, running looks as such.
+Assuming that the module file created by the Smithy formula is used, or a similar one created, basic running looks like the following examples.
 
 ```
 $ module load wraprun
