@@ -35,8 +35,8 @@ comma-separated PES syntax `PES1,PES2,...,PESN` syntax, for instance:
 ```
 $ wraprun -n 2,2,2 ./foo.out : ...
 ```
-would launch 3 two-process instances of foo.out on a single node. This may also be combined with the `--w-cd` flag :
-```
+would launch 3 two-process instances of foo.out on a single node. 
+
 In this case the number of allocated nodes must be at least equal to the sum of processes in the comma-separated list of processing elements divided by the maximum number of processes per node.
 
 This may also be combined with the `--w-cd` flag :
