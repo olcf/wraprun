@@ -42,6 +42,7 @@ THE SOFTWARE.
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
+#include <signal.h>
 #include "print_macros.h"
 #include "mpi.h"
 
@@ -136,6 +137,16 @@ void CloseStdOutErr() {
   fclose(stderr);
 }
 
+// If signal is ignored we wait for all other wraprun processes to complete before exiting
+// Calling most of these functions is technically undefined
+void SegvHandler(int sig) {
+  fprintf(stderr, "*********\n ERROR: Signal Received: %d\n *********\n", sig);
+
+  MPI_Finalize();
+
+  exit(0);
+}
+
 void SplitInit() {
   // Cray has issues when LD_PRELOAD is set
   // and exec*() is called...this is a workaround
@@ -158,6 +169,12 @@ void SplitInit() {
 
   if (getenv("W_REDIRECT_OUTERR"))
     SetStdOutErr(color);
+
+  if (getenv("W_IGNORE_SEGV")) {
+    sighandler_t err_sig = signal(SIGSEGV, SegvHandler);
+    if(err_sig == SIG_ERR)
+      fprintf(stderr, "ERROR REGISTERING SIGSEGV HANDLER!\n");
+  }
 
   SetSplitCommunicator(color);
 
