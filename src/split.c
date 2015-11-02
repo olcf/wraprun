@@ -140,7 +140,7 @@ void CloseStdOutErr() {
 // If signal is ignored we wait for all other wraprun processes to complete before exiting
 // Calling most of these functions is technically undefined
 void SegvHandler(int sig) {
-  fprintf(stderr, "*********\n ERROR: Signal Received: %d\n *********\n", sig);
+  fprintf(stderr, "*********\n ERROR: Signal Received: %d\n*********\n", sig);
 
   MPI_Finalize();
 
