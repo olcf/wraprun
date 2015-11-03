@@ -516,6 +516,10 @@ class Wraprun(object):
                         self.account)
                     )
             self._env['WRAPRUN_FILE'] = self.file.name
+            if self.args.wraprun.redirect_stdout:
+                log('INFO',
+                        'Explicit --w-roe is deprecated. '
+                        'Redirecting stdio is the default behavior.')
             self._env['W_REDIRECT_OUTERR'] = '1'
             self._env['W_IGNORE_SEGV'] = '1'
             self._env['W_UNSET_PRELOAD'] = '1'
