@@ -468,11 +468,11 @@ class Wraprun(object):
                         break
             else:
                 try:
-                    self._account = os.environ["TEST_ACCOUNT"]
+                    self._account = os.environ["W_TEST_ACCOUNT"]
                 except KeyError:
                     raise WraprunError(
                             "Job account not found!"
-                            " Set TEST_ACCOUNT env-var for testing.")
+                            " Set W_TEST_ACCOUNT env-var for testing.")
         return self._account
 
     @property
@@ -516,7 +516,9 @@ class Wraprun(object):
                         self.account)
                     )
             self._env['WRAPRUN_FILE'] = self.file.name
-            #self._env['W_REDIRECT_OUTERR'] = '1'
+            self._env['W_REDIRECT_OUTERR'] = '1'
+            self._env['W_IGNORE_SEGV'] = '1'
+            self._env['W_UNSET_PRELOAD'] = '1'
         return self._env
 
     def eval(self):
