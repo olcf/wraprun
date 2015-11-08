@@ -81,13 +81,13 @@ static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
   fclose(file);
 }
 
-void SetSplitCommunicator(const int color) {
+static void SetSplitCommunicator(const int color) {
   const int err = PMPI_Comm_split(MPI_COMM_WORLD, color, 0, &MPI_COMM_SPLIT);
   if(err != MPI_SUCCESS)
     EXIT_PRINT("Failed to split communicator: %d!\n", err);
 }
 
-void SetWorkingDirectory(const char *const work_dir) {
+static void SetWorkingDirectory(const char *const work_dir) {
   const int err = chdir(work_dir);
   if(err)
     EXIT_PRINT("Failed to change working directory: %s!\n", strerror(errno));
@@ -117,7 +117,7 @@ static void SetEnvironmentVaribles(char *env_vars) {
 }
 
 // Redirect stdout and stderr to file based upon color
-void SetStdOutErr(const int color) {
+static void SetStdOutErr(const int color) {
   const char *const job_id = getenv("PBS_JOBID");
   char file_name[1024];
 
@@ -132,22 +132,33 @@ void SetStdOutErr(const int color) {
     EXIT_PRINT("Error setting stderr\n");
 }
 
-void CloseStdOutErr() {
+static void CloseStdOutErr() {
   fclose(stdout);
   fclose(stderr);
 }
 
-// If signal is ignored we wait for all other wraprun processes to complete before exiting
+// Wait for all other wraprun processes to complete before exiting
 // Calling most of these functions is technically undefined
-void SegvHandler(int sig) {
+static void SegvHandler(int sig) {
   fprintf(stderr, "*********\n ERROR: Signal Received: %d\n*********\n", sig);
 
   MPI_Finalize();
 
-  exit(0);
+  exit(EXIT_SUCCESS);
 }
 
-void SplitInit() {
+// For an exit code of 0, any process with non 0 exit will abort entire wraprun
+static void ExitHandler() {
+  int finalized = 0;
+  MPI_Finalized(&finalized);
+
+  if(!finalized)
+    MPI_Finalize();
+
+  _exit(EXIT_SUCCESS);
+}
+
+static void SplitInit() {
   // Cray has issues when LD_PRELOAD is set
   // and exec*() is called...this is a workaround
   if (getenv("W_UNSET_PRELOAD"))
@@ -175,6 +186,13 @@ void SplitInit() {
     if(err_sig == SIG_ERR)
       fprintf(stderr, "ERROR REGISTERING SIGSEGV HANDLER!\n");
   }
+
+  if (getenv("W_IGNORE_RETURN_CODE")) {
+    int err_code = atexit(ExitHandler);
+    if(err_code != 0)
+      fprintf(stderr, "ERROR REGISTERING ATEXIT HANDLER!\n");
+  }
+
 
   SetSplitCommunicator(color);
 
