@@ -92,6 +92,7 @@ class WraprunFormula < Formula
 
     setenv W_UNSET_PRELOAD 1 
     setenv W_IGNORE_SEGV 1
+    setenv W_IGNORE_RETURN_CODE 1
 
     <% if @builds.size > 1 %>
     <%= module_build_list @package, @builds %>
