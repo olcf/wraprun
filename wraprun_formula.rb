@@ -1,6 +1,6 @@
 class WraprunFormula < Formula
   homepage "https://github.com/olcf/wraprun"
-  url "https://github.com/olcf/wraprun/archive/v0.1.4.tar.gz"
+  url "https://github.com/olcf/wraprun/archive/v0.1.5.tar.gz"
 
   concern for_version("dev") do
     included do
@@ -93,6 +93,7 @@ class WraprunFormula < Formula
     setenv W_UNSET_PRELOAD 1 
     setenv W_IGNORE_SEGV 1
     setenv W_IGNORE_RETURN_CODE 1
+    setenv W_IGNORE_ABRT 1
 
     <% if @builds.size > 1 %>
     <%= module_build_list @package, @builds %>

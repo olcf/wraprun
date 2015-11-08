@@ -147,7 +147,17 @@ static void SegvHandler(int sig) {
   exit(EXIT_SUCCESS);
 }
 
+// Handle SIGABRT, to handle a call to abort() for instance
+static void AbrtHandler(int sig) {
+  fprintf(stderr, "*********\n ERROR: Signal Received: %d\n*********\n", sig);
+
+  MPI_Finalize();
+
+  exit(EXIT_SUCCESS);
+}
+
 // For an exit code of 0, any process with non 0 exit will abort entire wraprun
+// Works for exit() or return()
 static void ExitHandler() {
   int finalized = 0;
   MPI_Finalized(&finalized);
@@ -187,12 +197,17 @@ static void SplitInit() {
       fprintf(stderr, "ERROR REGISTERING SIGSEGV HANDLER!\n");
   }
 
+  if (getenv("W_IGNORE_ABRT")) {
+    sighandler_t err_abrt = signal(SIGABRT, AbrtHandler);
+    if(err_abrt == SIG_ERR)
+      fprintf(stderr, "ERROR REGISTERING SIGARBT HANDLER!\n");
+  }
+
   if (getenv("W_IGNORE_RETURN_CODE")) {
     int err_code = atexit(ExitHandler);
     if(err_code != 0)
       fprintf(stderr, "ERROR REGISTERING ATEXIT HANDLER!\n");
   }
-
 
   SetSplitCommunicator(color);
 
