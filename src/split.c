@@ -138,18 +138,24 @@ static void CloseStdOutErr() {
 }
 
 // Wait for all other wraprun processes to complete before exiting
-// Calling PMPI_Finalize and fprintf is undefined
+// Calling MPI_Finalize and fprintf is undefined
 // Cleanup operations have been problematic so are skipped
 static void SegvHandler(int sig) {
-  PMPI_Finalize();
+  // If the process receives another SEGV throw in the towel
+  signal(SIGSEGV, SIG_DFL);
 
-  fprintf(stderr, "*********\n ERROR: Signal Received: %d\n*********\n", sig);
+  fprintf(stderr, "*********\n ERROR: Signal SEGV Received\n*********\n");
+
+  MPI_Finalize();
 
   _exit(EXIT_SUCCESS);
 }
 
 // Handle SIGABRT, to handle a call to abort() for instance
 static void AbrtHandler(int sig) {
+  // If the process receives another ABRT throw in the towel
+  signal(SIGABRT, SIG_DFL);
+
   fprintf(stderr, "*********\n ERROR: Signal Received: %d\n*********\n", sig);
 
   MPI_Finalize();
@@ -260,16 +266,20 @@ int MPI_Finalize() {
       EXIT_PRINT("Failed to free split communicator: %d !\n", err);
   }
 
-  // Allow MPI_Finalize to be called directly
-  int return_value;
-  if (getenv("W_UNWRAP_FINALIZE")) {
-    DEBUG_PRINT("Unwrapped!\n");
-    int (*real_MPI_Finalize)() = dlsym(RTLD_NEXT, "MPI_Finalize");
-    return_value = (*real_MPI_Finalize)();
-  }
-  else {
-    DEBUG_PRINT("Wrapped!\n");
-    return_value = PMPI_Finalize();
+  int return_value = 0;
+  int finalized = 0;
+  MPI_Finalized(&finalized);
+  if(!finalized) {
+    // Allow MPI_Finalize to be called directly
+    if (getenv("W_UNWRAP_FINALIZE")) {
+      DEBUG_PRINT("Unwrapped!\n");
+      int (*real_MPI_Finalize)() = dlsym(RTLD_NEXT, "MPI_Finalize");
+      return_value = (*real_MPI_Finalize)();
+    }
+    else {
+      DEBUG_PRINT("Wrapped!\n");
+      return_value = PMPI_Finalize();
+    }
   }
 
   if (getenv("W_REDIRECT_OUTERR"))
