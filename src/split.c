@@ -138,13 +138,14 @@ static void CloseStdOutErr() {
 }
 
 // Wait for all other wraprun processes to complete before exiting
-// Calling most of these functions is technically undefined
+// Calling PMPI_Finalize and fprintf is undefined
+// Cleanup operations have been problematic so are skipped
 static void SegvHandler(int sig) {
+  PMPI_Finalize();
+
   fprintf(stderr, "*********\n ERROR: Signal Received: %d\n*********\n", sig);
 
-  MPI_Finalize();
-
-  exit(EXIT_SUCCESS);
+  _exit(EXIT_SUCCESS);
 }
 
 // Handle SIGABRT, to handle a call to abort() for instance
@@ -161,7 +162,6 @@ static void AbrtHandler(int sig) {
 static void ExitHandler() {
   int finalized = 0;
   MPI_Finalized(&finalized);
-
   if(!finalized)
     MPI_Finalize();
 
