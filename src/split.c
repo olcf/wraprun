@@ -46,7 +46,7 @@ THE SOFTWARE.
 #include "print_macros.h"
 #include "mpi.h"
 
-static MPI_Comm MPI_COMM_SPLIT;
+static MPI_Comm MPI_COMM_SPLIT = MPI_COMM_NULL;
 
 // Reads in rank line of WRAPRUN_FILE
 // space seperated values are parsed to set color, work_dir, and env_vars
@@ -254,9 +254,11 @@ int MPI_Init_thread(int *argc, char ***argv, int required, int *provided) {
 }
 
 int MPI_Finalize() {
-  const int err = PMPI_Comm_free(&MPI_COMM_SPLIT);
-  if(err != MPI_SUCCESS)
-    EXIT_PRINT("Failed to free split communicator: %d !\n", err);
+  if(MPI_COMM_SPLIT != MPI_COMM_NULL) {
+    const int err = PMPI_Comm_free(&MPI_COMM_SPLIT);
+    if(err != MPI_SUCCESS)
+      EXIT_PRINT("Failed to free split communicator: %d !\n", err);
+  }
 
   // Allow MPI_Finalize to be called directly
   int return_value;
