@@ -156,7 +156,7 @@ static void AbrtHandler(int sig) {
   // If the process receives another ABRT throw in the towel
   signal(SIGABRT, SIG_DFL);
 
-  fprintf(stderr, "*********\n ERROR: Signal Received: %d\n*********\n", sig);
+  fprintf(stderr, "*********\n ERROR: Signal SIGABRT Received\n*********\n");
 
   MPI_Finalize();
 
