@@ -141,26 +141,36 @@ static void CloseStdOutErr() {
 // Calling MPI_Finalize and fprintf is undefined
 // Cleanup operations have been problematic so are skipped
 static void SegvHandler(int sig) {
-  // If the process receives another SEGV throw in the towel
-  signal(SIGSEGV, SIG_DFL);
-
   fprintf(stderr, "*********\n ERROR: Signal SEGV Received\n*********\n");
 
-  MPI_Finalize();
+  if(getenv("W_SIG_DFL"))
+    signal(SIGSEGV, SIG_DFL);
 
+  // Try to clean up
+  MPI_Finalize();
   _exit(EXIT_SUCCESS);
 }
 
 // Handle SIGABRT, to handle a call to abort() for instance
 static void AbrtHandler(int sig) {
-  // If the process receives another ABRT throw in the towel
-  signal(SIGABRT, SIG_DFL);
-
   fprintf(stderr, "*********\n ERROR: Signal SIGABRT Received\n*********\n");
 
-  MPI_Finalize();
+  if(getenv("W_SIG_DFL")) 
+    signal(SIGSEGV, SIG_DFL);
 
+  // Try to clean up
+  MPI_Finalize();
   exit(EXIT_SUCCESS);
+}
+
+static void SegvHandlerPause(int sig) {
+  fprintf(stderr, "*********\n ERROR: Signal SEGV Received\n*********\n");
+  pause();
+}
+
+static void AbrtHandlerPause(int sig) {
+  fprintf(stderr, "*********\n ERROR: Signal Abrt Received\n*********\n");
+  pause();
 }
 
 // For an exit code of 0, any process with non 0 exit will abort entire wraprun
@@ -198,13 +208,25 @@ static void SplitInit() {
     SetStdOutErr(color);
 
   if (getenv("W_IGNORE_SEGV")) {
-    sighandler_t err_sig = signal(SIGSEGV, SegvHandler);
+    sighandler_t err_sig;
+
+    if(getenv("W_SIG_PAUSE"))
+      err_sig = signal(SIGSEGV, SegvHandlerPause);
+    else
+      err_sig = signal(SIGSEGV, SegvHandler);
+
     if(err_sig == SIG_ERR)
       fprintf(stderr, "ERROR REGISTERING SIGSEGV HANDLER!\n");
   }
 
   if (getenv("W_IGNORE_ABRT")) {
-    sighandler_t err_abrt = signal(SIGABRT, AbrtHandler);
+    sighandler_t err_abrt;
+
+    if(getenv("W_SIG_PAUSE"))
+      err_abrt = signal(SIGABRT, AbrtHandlerPause);
+    else
+      err_abrt = signal(SIGABRT, AbrtHandlerPause);
+
     if(err_abrt == SIG_ERR)
       fprintf(stderr, "ERROR REGISTERING SIGARBT HANDLER!\n");
   }
