@@ -21,8 +21,20 @@
 # LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
-from wraprun import main
+'''
+wraprun - A flexible Aprun task bundler.
+
+This module provides the command line tool 'wraprun'. More information about
+using wraprun can be found by issuing 
+
+  wraprun --help
+
+at the command line.
+'''
+
+from wraprun import Wraprun
 
 if __name__ == '__main__':
-    main()
+    wraprun = Wraprun()
+    wraprun.eval()
 
