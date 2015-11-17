@@ -105,7 +105,7 @@ class WraprunFormula < Formula
     <% end %>
 
     prepend-path PATH             $PREFIX/bin
-    prepend-path PYTHONPATH       $PREFIX/lib/python2.7/site-packages/wraprun
+    prepend-path PYTHONPATH       $PREFIX/lib/python2.7/site-packages
     prepend-path LD_LIBRARY_PATH  $PREFIX/lib
 
     # The libfmpich library is suffixed with the PE name, so we must extract it
