@@ -32,9 +32,35 @@ using wraprun can be found by issuing
 at the command line.
 '''
 
+from __future__ import print_function
 from wraprun import Wraprun
+from wraprun import GLOBAL_OPTIONS, GROUP_OPTIONS
+from wraprun import Parsers
+import sys
 
 if __name__ == '__main__':
-    wraprun = Wraprun()
-    wraprun.eval()
+    #wraprun = Wraprun()
+    #wraprun.eval()
+    argv = sys.argv
+    try:
+        first_group_marker = argv.index(':')
+    except ValueError:
+        first_group_marker = len(argv)
+    first_group = argv[1:first_group_marker]
+    p = Parsers()
+    cli = p.create_cli_parser()
+    known_args = cli.parse_args(first_group)
+    wraprun_global_args = GLOBAL_OPTIONS.wraprun_args(known_args)
+    aprun_global_args = GLOBAL_OPTIONS.aprun_args(known_args)
+    task_args = GROUP_OPTIONS.all_args(known_args)
+    wrap = Wraprun(**wraprun_global_args)
+    wrap.add_task(**task_args)
+    # print(wraprun_global_args, aprun_global_args, task_args)
+    remaining_argstrings = ' '.join(argv[first_group_marker + 1:]).split(':')
+    # print(remaining_argstrings)
+    for string in remaining_argstrings:
+        # print(string)
+        wrap.add_task(string=string)
+    print(wrap)
+
 
