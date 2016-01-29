@@ -204,9 +204,6 @@ static void SplitInit() {
 
   GetRankParamsFromFile(rank, &color, work_dir, env_vars);
 
-  if (getenv("W_REDIRECT_OUTERR"))
-    SetStdOutErr(color);
-
   if (getenv("W_IGNORE_SEGV")) {
     sighandler_t err_sig;
 
@@ -240,6 +237,9 @@ static void SplitInit() {
   SetSplitCommunicator(color);
 
   SetWorkingDirectory(work_dir);
+
+  if (getenv("W_REDIRECT_OUTERR"))
+    SetStdOutErr(color);
 
   SetEnvironmentVaribles(env_vars);
 

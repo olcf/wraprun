@@ -1,6 +1,6 @@
 class WraprunFormula < Formula
   homepage "https://github.com/olcf/wraprun"
-  url "https://github.com/olcf/wraprun/archive/v0.1.11.tar.gz"
+  url "https://github.com/olcf/wraprun/archive/v0.1.12.tar.gz"
 
   concern for_version("dev") do
     included do
