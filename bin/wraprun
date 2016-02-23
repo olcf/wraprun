@@ -32,12 +32,14 @@ using wraprun can be found by issuing
 at the command line.
 '''
 
-from __future__ import print_function
-import sys
 from wraprun import Wraprun
 
 if __name__ == '__main__':
-    wraprun_inst = Wraprun(argv=sys.argv)
-    wraprun_inst.launch()
+    import sys
 
+    def _cli_main():
+        bundle = Wraprun(argv=sys.argv)
+        bundle.launch()
+
+    _cli_main()
 
