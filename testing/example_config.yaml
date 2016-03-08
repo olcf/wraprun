@@ -1,0 +1,30 @@
+# Two main keys specify configuration
+
+# options is a hash where each key is a global option keyword argument name.
+# The type of each argument is the same as expected when using the API with
+# kwargs except 'conf' which makes no sense to provide from a configuration
+# file.
+options:
+  debug: false   # Boolean or null
+
+# groups is a list of task groups. Each element is a hash with the same kwargs
+# that can be passed to the API. If the string keyword is present, it should
+# be the same form as would be passed to the CLI (without separating ':') and
+# all other kwargs are ignored. 
+# Only 'string' or 'pes' and 'exe' are required: all other keys are optional.
+groups:
+- string: -n 2,4,6 --w-cd ./a,./b,./c -cc 2 -ss ./bin_a -cc
+- cd: [./a, ./b, ./c]    # String or inline series of strings
+  pes: [2, 4, 6]         # integer or inline series of integers
+  arch:                  # 
+  cpu_list: '2'          # integer
+  cpu_placement: '2'     # integer
+  depth:                 # integer
+  cpus_per_cu:           # integer
+  node_list:             #
+  pes_per_node:          #
+  pes_per_numa_node:     #
+  numa_node_list:        #
+  numa_nodes_per_node:   #
+  strict_memory:         # boolean
+  exe: ./bin_a -flags    # string
