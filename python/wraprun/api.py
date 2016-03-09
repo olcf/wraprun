@@ -175,10 +175,8 @@ class Wraprun(object):
             return self._env
         except KeyError as error:
             self._env = None
-            old_trace = sys.exc_info()[2]
-            new_error = WraprunError(
+            raise WraprunError(
                 'Missing {v} environment variable'.format(v=error))
-            raise new_error.with_traceback(old_trace) from None
 
     def _aprun_arglist(self):
         """Return a list of the global CLI strings to pass to aprun."""

@@ -2,6 +2,12 @@ class WraprunFormula < Formula
   homepage "https://github.com/olcf/wraprun"
   url "https://github.com/olcf/wraprun/archive/v0.1.11.tar.gz"
 
+  supported_build_names /python2.7/, /python3/
+
+  depends_on do
+     python_module_from_build_name
+  end
+
   concern for_version("dev") do
     included do
       url "none"
@@ -10,7 +16,7 @@ class WraprunFormula < Formula
         pe = "PE-"
         pe = "PrgEnv-" if cray_system?
 
-        commands = [ "unload #{pe}gnu #{pe}pgi #{pe}cray #{pe}intel" ]
+        commands = [ "unload #{pe}gnu #{pe}pgi #{pe}cray #{pe}intel python" ]
 
         commands << "load #{pe}gnu" if build_name =~ /gnu/
         commands << "swap gcc gcc/#{$1}" if build_name =~ /gnu([\d\.]+)/
@@ -23,6 +29,9 @@ class WraprunFormula < Formula
 
         commands << "load #{pe}cray" if build_name =~ /cray/
         commands << "swap intel cray/#{$1}" if build_name =~ /cray([\d\.]+)/
+
+				commands << "load #{python_module_from_build_name}"
+				commands << "load python_setuptools"
 
         commands << "load dynamic-link"
         commands << "load cmake3"
@@ -42,6 +51,8 @@ class WraprunFormula < Formula
         system "cd build; cmake -DCMAKE_INSTALL_PREFIX=#{prefix} ../source"
         system "cd build; make"
         system "cd build; make install"
+				Dir.chdir "python"
+				system_python "setup.py install --prefix=#{prefix} --compile"
       end
     end
   end
@@ -50,7 +61,7 @@ class WraprunFormula < Formula
     pe = "PE-"
     pe = "PrgEnv-" if cray_system?
 
-    commands = [ "unload #{pe}gnu #{pe}pgi #{pe}cray #{pe}intel" ]
+    commands = [ "unload #{pe}gnu #{pe}pgi #{pe}cray #{pe}intel python" ]
 
     commands << "load #{pe}gnu" if build_name =~ /gnu/
     commands << "swap gcc gcc/#{$1}" if build_name =~ /gnu([\d\.]+)/
@@ -63,6 +74,9 @@ class WraprunFormula < Formula
 
     commands << "load #{pe}cray" if build_name =~ /cray/
     commands << "swap intel cray/#{$1}" if build_name =~ /cray([\d\.]+)/
+
+    commands << "load #{python_module_from_build_name}"
+		commands << "load python_setuptools"
 
     commands << "load dynamic-link"
     commands << "load cmake3"
@@ -77,6 +91,8 @@ class WraprunFormula < Formula
     system "cd build; cmake -DCMAKE_INSTALL_PREFIX=#{prefix} .."
     system "cd build; make"
     system "cd build; make install"
+    Dir.chdir "python"
+    system_python "setup.py install --prefix=#{prefix} --compile"
   end
 
   modulefile <<-MODULEFILE.strip_heredoc
@@ -88,6 +104,7 @@ class WraprunFormula < Formula
     # One line description
     module-whatis "<%= @package.name %> <%= @package.version %>"
 
+    prereq python
     module load dynamic-link
 
     setenv W_UNSET_PRELOAD 1 
@@ -97,16 +114,13 @@ class WraprunFormula < Formula
     setenv W_SIG_DFL 1
 
     <% if @builds.size > 1 %>
-    <%= module_build_list @package, @builds %>
+		<%= python_module_build_list @package, @builds %>
 
     set PREFIX <%= @package.version_directory %>/$BUILD
-    <% else %>
-    set PREFIX <%= @package.prefix %>
-    <% end %>
 
-    prepend-path PATH             $PREFIX/bin
-    prepend-path PYTHONPATH       $PREFIX/lib/python2.7/site-packages
-    prepend-path LD_LIBRARY_PATH  $PREFIX/lib
+		prepend-path PATH            $PREFIX/bin
+		prepend-path LD_LIBRARY_PATH $PREFIX/lib
+		prepend-path PYTHONPATH      $PREFIX/lib/$LIBDIR/site-packages
 
     # The libfmpich library is suffixed with the PE name, so we must extract it
     set compiler $env(PE_ENV)
