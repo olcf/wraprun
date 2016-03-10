@@ -43,16 +43,19 @@ class WraprunFormula < Formula
       def install
         module_list
 
+				Dir.chdir "#{prefix}"
         system "rm -rf source"
         system "git clone https://github.com/olcf/wraprun.git source" unless Dir.exists?("source")
-        system "cd source; git checkout origin/development"
-        system "rm -rf build"
-        system "mkdir build"
-        system "cd build; cmake -DCMAKE_INSTALL_PREFIX=#{prefix} ../source"
-        system "cd build; make"
-        system "cd build; make install"
-				Dir.chdir "python"
-				system_python "setup.py install --prefix=#{prefix} --compile"
+				Dir.chdir "#{prefix}/source"
+        system "git checkout origin/development"
+        # normal build from here:
+        system "rm -rf build; mkdir build"
+				Dir.chdir "build"
+        system "cmake -DCMAKE_INSTALL_PREFIX=#{prefix} .."
+        system "make"
+        system "make install"
+				Dir.chdir "#{prefix}/source/python"
+				system_python "setup.py install --root=#{prefix} --prefix="" --compile"
       end
     end
   end
@@ -86,13 +89,13 @@ class WraprunFormula < Formula
 
   def install
     module_list
-    system "rm -rf build"
-    system "mkdir build"
-    system "cd build; cmake -DCMAKE_INSTALL_PREFIX=#{prefix} .."
-    system "cd build; make"
-    system "cd build; make install"
-    Dir.chdir "python"
-    system_python "setup.py install --prefix=#{prefix} --compile"
+    system "rm -rf build; mkdir build"
+    Dir.chdir "build"
+    system "cmake -DCMAKE_INSTALL_PREFIX=#{prefix} .."
+    system "make"
+    system "make install"
+    Dir.chdir "#{prefix}/source/python"
+    system_python "setup.py install --root=#{prefix} --prefix="" --compile"
   end
 
   modulefile <<-MODULEFILE.strip_heredoc
@@ -113,9 +116,7 @@ class WraprunFormula < Formula
     setenv W_IGNORE_ABRT 1
     setenv W_SIG_DFL 1
 
-    <% if @builds.size > 1 %>
 		<%= python_module_build_list @package, @builds %>
-
     set PREFIX <%= @package.version_directory %>/$BUILD
 
 		prepend-path PATH            $PREFIX/bin
