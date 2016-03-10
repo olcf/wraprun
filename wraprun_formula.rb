@@ -5,7 +5,7 @@ class WraprunFormula < Formula
   supported_build_names /python2.7/, /python3/
 
   depends_on do
-     python_module_from_build_name
+     [python_module_from_build_name, "python_yaml"]
   end
 
   concern for_version("dev") do
@@ -32,6 +32,7 @@ class WraprunFormula < Formula
 
 				commands << "load #{python_module_from_build_name}"
 				commands << "load python_setuptools"
+				commands << "load python_yaml"
 
         commands << "load dynamic-link"
         commands << "load cmake3"
@@ -55,7 +56,7 @@ class WraprunFormula < Formula
         system "make"
         system "make install"
 				Dir.chdir "#{prefix}/source/python"
-				system_python "setup.py install --root=#{prefix} --prefix="" --compile"
+				system_python "setup.py install --root=#{prefix} --prefix=''"
       end
     end
   end
@@ -80,6 +81,7 @@ class WraprunFormula < Formula
 
     commands << "load #{python_module_from_build_name}"
 		commands << "load python_setuptools"
+    commands << "load python_yaml"
 
     commands << "load dynamic-link"
     commands << "load cmake3"
@@ -95,7 +97,7 @@ class WraprunFormula < Formula
     system "make"
     system "make install"
     Dir.chdir "#{prefix}/source/python"
-    system_python "setup.py install --root=#{prefix} --prefix="" --compile"
+    system_python "setup.py install --root=#{prefix} --prefix=''"
   end
 
   modulefile <<-MODULEFILE.strip_heredoc
@@ -108,6 +110,8 @@ class WraprunFormula < Formula
     module-whatis "<%= @package.name %> <%= @package.version %>"
 
     prereq python
+    module load python_yaml
+    prereq python_yaml
     module load dynamic-link
 
     setenv W_UNSET_PRELOAD 1 
