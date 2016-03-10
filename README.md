@@ -20,7 +20,7 @@ e.g. `WRAPRUN_PRELOAD=/path/to/install/lib/libsplit.so:/path/to/mpi_install/lib/
 Assuming that the module file created by the Smithy formula is used, or a similar one created, basic running looks like the following examples.
 
 ```
-$ module load wraprun
+$ module load python wraprun
 $ wraprun -n 80 ./foo.out : -n 160 ./bar.out ...
 ```
 
@@ -49,10 +49,74 @@ For non MPI executables a wrapper application, `serial`, is provided. This wrapp
 $ wraprun -n 1 serial ./foo.out -foo_args : ...
 ```
 
-By default all wraprun application's `stdout/err` will be directed to the same file, this if often not desirable. Setting the `--w-roe` flag will cause each executable to redirect its output to a unique file in the current working directory:
+The `stdout/err` for each task is directed to it's own unique file in the
+current working directory. In early releases, this effect was accomplished
+with the `--w-roe` flag. However, manually specifying this flag has not been
+required since v0.1.11. 
 ```
 $ wraprun --w-roe -n 1 ./foo.out: ...
 ```
+
+## Python API
+
+Wraprun version 0.2.1 introduces a minimal API that can be used to bundle and
+launch tasks programatically via python scripts.
+
+To use the API, load the wraprun environment module and import the `wraprun`
+python module into your script:
+
+```
+#!/usr/bin/env python
+import wraprun
+
+bundle = wraprun.Wraprun()
+bundle.add_task('-n 2,4,6 --w-cd ./a,./b,./c -cc 2 -ss ./bin_a -cc')
+bundle.add_task('-n 3,5,7 ./bin_b input_b')
+bundle.add_task(pes=[1,2,3], pes_per_node=5, exe='./bin_c with args', cd=['./aa', './bb','./cc'])
+bundle.launch()
+```
+
+The `Wraprun` constructor accepts keyword arguments for global options. The two
+principle options are `conf` for passing a configuration file path (see below)
+or running in debug mode which does not launch a job.
+
+```
+wraprun.Wraprun(conf='/path/to/conf.yml')
+wraprun.Wraprun(debug=True)
+```
+
+The `add_task` method adds a new group to the bundle. It accepts either a string
+as would be passed via the command-line utility or keyword arguments for each
+group option.
+
+
+| Parameter                                      | CLI Flag | API keyword           | API format       |
+| ----------------------------------------------:|:--------:|:---------------------:|:---------------- |
+| Task working directory                         | --w-cd   | 'cd'                  | str or [str,...] |
+| Number of processing elements (PEs). REQUIRED  | -n       | 'pes'                 | int or [int,...] |
+| Host architecture                              | -a       | 'arch'                | str              |
+| CPU list                                       | -cc      | 'cpu_list'            | str              |
+| CPU placement file                             | -cp      | 'cpu_placement'       | str              |
+| Process affinity depth                         | -d       | 'depth'               | int              |
+| CPUs per CU                                    | -j       | 'cpus_per_cu'         | int              |
+| Node list                                      | -L       | 'node_list'           | str              |
+| PEs per node                                   | -N       | 'pes_per_node'        | int              |
+| PEs per NUMA node                              | -S       | 'pes_per_numa_node'   | int              |
+| NUMA node list                                 | -sl      | 'numa_node_list'      | int              |
+| Number of NUMA nodes per node                  | -sn      | 'numa_nodes_per_node' | int              |
+| Use strict memory containment                  | -ss      | 'strict_memory'       | bool             |
+| Executable and argument string. REQUIRED       |          | 'exe'                 | str              |
+
+
+The `launch` method launches an aprun subprocess call for the added tasks.
+
+## Configuration Files
+
+Both the command line tool and the API can accept a YAML format configuration
+file for specifing tasks. See the command line utility help documentation
+`wraprun --help` for CLI usage.
+
+See the testing/example_config.yaml file for format information.
 
 ## Notes
 * It is recommended that applications be dynamically linked.
