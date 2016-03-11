@@ -27,12 +27,33 @@ class WraprunError(Exception):
 
 
 class Wraprun(object):
-    """Job bundler for aprun."""
+    """Job bundler for aprun.
+
+    This object provides an interface for constructing and launching a bundle
+    of tasks sharing an MPI communicator via aprun.
+
+    Usage:
+        bundle = Wraprun(...)
+        bundle.add_task(...)
+        bundle.launch()
+    """
     def __init__(self, argv=None, **kwargs):
         """API constructor.
 
-        Takes a list 'argv' of CLI argument strings or keyword arguments
-        corresponding to contents of wraprun.GLOBAL_OPTIONS.
+        Usage:
+         Wraprun(argv=['-n', '3', ...])
+         where argv is a list of CLI argument strings similar to 'sys.argv'.
+
+         OR
+
+         Wraprun(**kwargs)
+         where kwargs excludes 'argv'.
+
+        Args and kwargs:
+          argv (list(str)): CLI argument strings like 'sys.argv'
+              Cannot be used with other keyword args.
+          conf (str): Path to YAML configuration file.
+          debug (bool): Enables debugging output and does not launch aprun.
         """
         # Set null defaults.
         self._options = {}
@@ -116,11 +137,29 @@ class Wraprun(object):
         """Add a task spec.
 
         Takes either a string of CLI arguments or keyword arguments
-        corresponding to the contents of wraprun.GROUP_OPTIONS.
+        corresponding to the of wraprun.GROUP_OPTIONS.
+        If 'string' is present, it's contents override any conflicts with
+        keyword arguments.
 
         EXAMPLES:
            add_task('-n 1,2,3 --w-cd ./a,./b,./c ./exe exe_arg')
            add_task(pes=[1,2,3], cd=['./a','./b','./c'] ,exe='./exe exe_arg')
+
+        kwargs [kwarg (type): Description]:
+           cd (str or [str,...]): Task working directory
+           pes (int or [int,..]): Number of processing elements (PEs). REQUIRED
+           arch (int): Host architecture
+           cpu_list (int): CPU list
+           cpu_placement (int): CPU placement file
+           depth (int): Process affinity depth
+           cpus_per_cu (int): CPUs per CU
+           node_list (int): Node list
+           pes_per_node (int): PEs per node
+           pes_per_numa_node (int): PEs per NUMA node
+           numa_node_list (int): NUMA node list
+           numa_nodes_per_node (int): Number of NUMA nodes per node
+           strict_memory (bool): Use strict memory containment
+           exe (str): Executable and argument string. REQUIRED
         """
         kwargs.update(
             {"first_" + k: v for k, v in self._rank_and_color.items()})
