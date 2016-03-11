@@ -8,6 +8,26 @@ Classes provided include:
     GroupOptions
 """
 
+
+# # For generating doc strings:
+# args = (list(GROUP_OPTIONS.wraprun._args.items()) +
+#         list(GROUP_OPTIONS.aprun._args.items()))
+# for k,v in args:
+#     name = v.name if v.name else 'None'
+#     flag = v.flags[0] if v.flags else 'None'
+#     help = str(v.parser.get('help'))
+#     action = v.parser.get('action')
+#     type_key = action.__name__ if action is not None else 'action'
+#     types = {
+#         'ArgAction': 'int',
+#         'PesAction': 'int or [int,..]',
+#         'PathAction': 'str or [str,...]',
+#         'FlagAction': 'bool',
+#         'action': 'str',
+#         }
+#     print(name, '({}):'.format(types[type_key]), help)
+
+
 import argparse
 from .parseractions import ArgAction, FlagAction, PesAction, PathAction
 from .arguments import Argument, ArgumentList
