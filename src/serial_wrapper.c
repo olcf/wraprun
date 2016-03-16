@@ -40,7 +40,7 @@ THE SOFTWARE.
 
 int main(int argc, char **argv) {
   if (argc < 2)
-    EXIT_PRINT("Please provide executalbe!\n");
+    EXIT_PRINT("Please provide executable!\n");
 
   char **new_argv = &argv[1];
   int new_argc = argc - 1;
