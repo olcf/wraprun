@@ -259,7 +259,7 @@ class Wraprun(object):
             print(' Aprun call signature:\n   ',
                   ' '.join(self._subprocess_args()), '\n', sep='')
             print(' Environment variables:')
-            for key, value in self.env.items():
+            for key, value in sorted(self.env.items()):
                 print('   ', key, "=", value, sep="")
             print('\n Internal state:\n   ', self.__repr__(), '\n', sep='')
             self._file.file.seek(0)
