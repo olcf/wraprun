@@ -206,7 +206,8 @@ class Wraprun(object):
         try:
             if self._env is None:
                 self._env = dict()
-                self._env['LD_PRELOAD'] = os.environ['WRAPRUN_PRELOAD']
+                if not self._options.get('no_ld_preload', False):
+                    self._env['LD_PRELOAD'] = os.environ['WRAPRUN_PRELOAD']
                 self._env['WRAPRUN_FILE'] = self._file.name
                 self._env['W_REDIRECT_OUTERR'] = '1'
                 self._env['W_IGNORE_SEGV'] = '1'

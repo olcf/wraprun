@@ -141,6 +141,15 @@ class GlobalOptions(OptionsBase):
                     'help': 'DEPRECATED: Redirect group IO to separate files',
                     },
                 ),
+            Argument(
+                name='no_ld_preload',
+                flags=['--w-no-ld-pre'],
+                parser={
+                    'action': FlagAction,
+                    'default': False,
+                    'help': 'Disable setting LD_PRELOAD for advanced users.',
+                    },
+                ),
             )
 
         aprun = ArgumentList(
