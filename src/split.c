@@ -202,7 +202,12 @@ static void SplitInit() {
     EXIT_PRINT("Error allocating env_vars memory!\n");
   env_vars[0] = '\0'; // "zero" out env_vars
 
-  GetRankParamsFromFile(rank, &color, work_dir, env_vars);
+  if(getenv("W_RANK_FROM_ENV")) {
+    int env_rank = atoi(getenv("W_ENV_RANK"));
+    GetRankParamsFromFile(env_rank, &color, work_dir, env_vars);
+  }
+  else
+    GetRankParamsFromFile(rank, &color, work_dir, env_vars);
 
   if (getenv("W_IGNORE_SEGV")) {
     sighandler_t err_sig;
@@ -1555,10 +1560,21 @@ int MPIX_Comm_remote_group_failed(MPI_Comm comm, MPI_Group *failed_group) {
 
   return PMPIX_Comm_remote_group_failed(correct_comm, failed_group);
 }
+
 int MPIX_Comm_reenable_anysource(MPI_Comm comm, MPI_Group *failed_group) {
   DEBUG_PRINT("Wrapped!\n");
 
   MPI_Comm correct_comm = GetCorrectComm(comm);
 
   return PMPIX_Comm_reenable_anysource(correct_comm, failed_group);
+}
+
+int MPI_File_open(MPI_Comm comm, ROMIO_CONST char *filename, int amode,
+                  MPI_Info info, MPI_File *fh) {
+
+  DEBUG_PRINT("Wrapped!\n");
+
+  MPI_Comm correct_comm = GetCorrectComm(comm);
+
+  return PMPI_File_open(correct_comm, filename, amode, info, fh);
 }
