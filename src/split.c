@@ -1569,7 +1569,7 @@ int MPIX_Comm_reenable_anysource(MPI_Comm comm, MPI_Group *failed_group) {
   return PMPIX_Comm_reenable_anysource(correct_comm, failed_group);
 }
 
-int MPI_File_open(MPI_Comm comm, ROMIO_CONST char *filename, int amode,
+int MPI_File_open(MPI_Comm comm, const char *filename, int amode,
                   MPI_Info info, MPI_File *fh) {
 
   DEBUG_PRINT("Wrapped!\n");
