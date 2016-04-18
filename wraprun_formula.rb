@@ -109,6 +109,14 @@ class WraprunFormula < Formula
     # One line description
     module-whatis "<%= @package.name %> <%= @package.version %>"
 
+    if { ! [ is-loaded python ] } {
+      puts stderr "WARNING: Wraprun requires python."
+      puts stderr "The default python module is being loaded by wraprun but it will not be removed when the wraprun module is unloaded."
+      puts stderr "Manually load any python module version prior to wraprun to supress this message."
+      puts stderr ""
+      module load python
+    }
+
     prereq python
     module load python_yaml
     prereq python_yaml
