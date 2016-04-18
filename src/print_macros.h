@@ -5,7 +5,7 @@
 #include <errno.h>
 
 #ifdef DEBUG
-#define DEBUG_PRINT(str, args...) do { printf("DEBUG: %s:%d:%s():MPI_COMM_SPLIT=%p : " str, \
+#define DEBUG_PRINT(str, args...) do { printf("DEBUG: %s:%d:%s():MPI_COMM_SPLIT=%04x : " str, \
  __FILE__, __LINE__, __func__, MPI_COMM_SPLIT, ##args); } while(0)
 #else
 #define DEBUG_PRINT(str, args...) do {} while (0)
