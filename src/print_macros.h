@@ -7,7 +7,7 @@
 #ifdef DEBUG
 #define DEBUG_PRINT(str, args...) do { \
 int world_rank; \
-PMPI_Comm_rank(MPI_COMM_WORLD, world_rank); \
+PMPI_Comm_rank(MPI_COMM_WORLD, &world_rank); \
 printf("DEBUG: %s:%d:%s():MPI_COMM_SPLIT=%04x:world_rank=%d : " str, \
  __FILE__, __LINE__, __func__, MPI_COMM_SPLIT, world_rank, ##args); } while(0)
 #else
