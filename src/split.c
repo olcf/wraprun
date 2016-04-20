@@ -551,7 +551,7 @@ int MPI_Barrier(MPI_Comm comm) {
 }
 
 int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm comm) {
-  DEBUG_PRINT("Wrapped!\n");
+  DEBUG_PRINT("root: \n", root1);
 
   MPI_Comm correct_comm = GetCorrectComm(comm);
 
