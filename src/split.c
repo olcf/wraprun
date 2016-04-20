@@ -256,13 +256,13 @@ int MPI_Init(int *argc, char ***argv) {
   // Allow MPI_Init to be called directly
   int return_value;
   if (getenv("W_UNWRAP_INIT")) {
-    DEBUG_PRINT("Unwrapped!\n");
     int (*real_MPI_Init)(int*, char***) = dlsym(RTLD_NEXT, "MPI_Init");
     return_value = (*real_MPI_Init)(argc, argv);
+    DEBUG_PRINT("Unwrapped!\n");
   }
   else {
-    DEBUG_PRINT("Wrapped!\n");
     return_value = PMPI_Init(argc, argv);
+    DEBUG_PRINT("Wrapped!\n");
   }
 
   SplitInit();
