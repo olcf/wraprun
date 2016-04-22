@@ -563,11 +563,11 @@ int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm
   if(rtrn != MPI_SUCCESS) {
     char error_string[MPI_MAX_ERROR_STRING];
     int error_length;
-    MPI_Error_string(return_code, error_string, &error_length);
+    MPI_Error_string(rtrn, error_string, &error_length);
     DEBUG_PRINT("ERROR: %s", error_string);
   }
 
-  return rtrn
+  return rtrn;
 }
 
 int MPI_Gather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
