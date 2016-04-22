@@ -554,7 +554,7 @@ int MPI_Barrier(MPI_Comm comm) {
 }
 
 int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm comm) {
-  DEBUG_PRINT("count: %d, datatype: %d, root: %d, passed_comm: %#010x, id: %llu \n", count, datatype, root, comm, BCAST_COUNT);
+  DEBUG_PRINT("count: %d , datatype: %d , root: %d , passed_comm: %#010x , id: %llu \n", count, datatype, root, comm, BCAST_COUNT);
   BCAST_COUNT++;
 
   MPI_Comm correct_comm = GetCorrectComm(comm);
