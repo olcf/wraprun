@@ -558,7 +558,7 @@ int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm
   int r,s;
   MPI_Comm_rank(comm, &r);
   MPI_Comm_size(comm, &s);
-  DEBUG_PRINT("rank %d of %d calling bcast %d", r, s, BCAST_COUNT);
+  DEBUG_PRINT("rank %d of %d calling bcast %d\n", r, s, BCAST_COUNT);
   BCAST_COUNT++;
 
   MPI_Comm correct_comm = GetCorrectComm(comm);
