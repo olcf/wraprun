@@ -49,6 +49,7 @@ THE SOFTWARE.
 static MPI_Comm MPI_COMM_SPLIT = MPI_COMM_NULL;
 
 static uint64_t BCAST_COUNT = 0;
+#define MPI_Bcast(buffer, count, datatype, root, comm) MPI_Bcast_wrap(__FUNC__, buffer, count, datatype, root, comm)
 
 // Reads in rank line of WRAPRUN_FILE
 // space seperated values are parsed to set color, work_dir, and env_vars
@@ -553,8 +554,8 @@ int MPI_Barrier(MPI_Comm comm) {
   return PMPI_Barrier(correct_comm);
 }
 
-int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm comm) {
-  DEBUG_PRINT("count: %d , datatype: %d , root: %d , passed_comm: %#010x , id: %llu \n", count, datatype, root, comm, BCAST_COUNT);
+int MPI_Bcast_wrap(const char* caller_name, void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm comm) {
+  DEBUG_PRINT("count: %d , datatype: %d , root: %d , passed_comm: %#010x , id: %llu , caller: %s \n", count, datatype, root, comm, BCAST_COUNT, caller_name);
   BCAST_COUNT++;
 
   MPI_Comm correct_comm = GetCorrectComm(comm);
