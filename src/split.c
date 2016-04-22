@@ -129,7 +129,7 @@ static void SetStdOutErr(const int color) {
   if(!out_handle)
     EXIT_PRINT("Error setting stdout!\n");
 
-  sprintf(file_name, "%s_w_%d.err", job_id, color);
+  sprintf(file_name, "%s_%s_w_%d.err", job_id, app_id, color);
   const FILE *const err_handle = freopen(file_name, "a", stderr);
   if(!err_handle)
     EXIT_PRINT("Error setting stderr\n");
