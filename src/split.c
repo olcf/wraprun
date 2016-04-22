@@ -48,6 +48,8 @@ THE SOFTWARE.
 
 static MPI_Comm MPI_COMM_SPLIT = MPI_COMM_NULL;
 
+static uint64_t BCAST_COUNT = 0;
+
 // Reads in rank line of WRAPRUN_FILE
 // space seperated values are parsed to set color, work_dir, and env_vars
 static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
@@ -119,9 +121,10 @@ static void SetEnvironmentVaribles(char *env_vars) {
 // Redirect stdout and stderr to file based upon color
 static void SetStdOutErr(const int color) {
   const char *const job_id = getenv("PBS_JOBID");
+  const char *const app_id = getenv("ALPS_APP_ID");
   char file_name[1024];
 
-  sprintf(file_name, "%s_w_%d.out", job_id, color);
+  sprintf(file_name, "%s_%s_w_%d.out", job_id, app_id, color);
   const FILE *const out_handle = freopen(file_name, "a", stdout);
   if(!out_handle)
     EXIT_PRINT("Error setting stdout!\n");
@@ -309,7 +312,7 @@ int MPI_Finalize() {
     }
   }
 
-  if (getenv("W_REDIRECT_OUTERR"))
+  if (getenv("W_CLOSE_REDIRECT_OUTERR"))
     CloseStdOutErr();
 
   return return_value;
@@ -551,7 +554,7 @@ int MPI_Barrier(MPI_Comm comm) {
 }
 
 int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm comm) {
-  DEBUG_PRINT("root: %d\n", root);
+  DEBUG_PRINT("count: %d, datatype: %d, root: %d, passed_comm: %#010x, id: %llu \n", count, datatype, root, comm, BCAST_COUNT);
 
   MPI_Comm correct_comm = GetCorrectComm(comm);
 
