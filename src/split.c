@@ -554,7 +554,11 @@ int MPI_Barrier(MPI_Comm comm) {
 }
 
 int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm comm) {
-  DEBUG_PRINT("count: %d , datatype: %d , root: %d , passed_comm: %#010x , id: %llu \n", count, datatype, root, comm, BCAST_COUNT);
+//  DEBUG_PRINT("count: %d , datatype: %d , root: %d , passed_comm: %#010x , id: %llu \n", count, datatype, root, comm, BCAST_COUNT);
+  int r,s;
+  MPI_Comm_rank(comm, &r);
+  MPI_Comm_size(comm, &s);
+  DEBUG_PRINT("rank %d of %d calling bcast %d", r, s, BCAST_COUNT);
   BCAST_COUNT++;
 
   MPI_Comm correct_comm = GetCorrectComm(comm);
