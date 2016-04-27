@@ -554,22 +554,25 @@ int MPI_Barrier(MPI_Comm comm) {
 }
 
 int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm comm) {
-//  DEBUG_PRINT("count: %d , datatype: %d , root: %d , passed_comm: %#010x , id: %llu \n", count, datatype, root, comm, BCAST_COUNT);
   int r,s;
   MPI_Comm_rank(comm, &r);
   MPI_Comm_size(comm, &s);
-  DEBUG_PRINT("rank %d of %d calling bcast %d\n", r, s, BCAST_COUNT);
+
+  MPI_Comm correct_comm = GetCorrectComm(comm);
+
+  MPI_Barrier(correct_comm);
+
+  DEBUG_PRINT("rank %d of %d starting bcast %d count: %d , datatype: %d , root: %d , passed_comm: %#010x \n", r, s, BCAST_COUNT, count, datatype, root, comm);
   BCAST_COUNT++;
 
   MPI_Comm correct_comm = GetCorrectComm(comm);
 
   int rtrn = PMPI_Bcast(buffer, count, datatype, root, correct_comm);
-  if(rtrn != MPI_SUCCESS) {
-    char error_string[MPI_MAX_ERROR_STRING];
-    int error_length;
-    MPI_Error_string(rtrn, error_string, &error_length);
-    DEBUG_PRINT("ERROR: %s", error_string);
-  }
+
+  MPI_Barrier(correct_comm);
+
+  DEBUG_PRINT("rank %d of %d finished bcast %d count: %d , datatype: %d , root: %d , passed_comm: %#010x \n", r, s, BCAST_COUNT, count, datatype, root, comm);
+
 
   return rtrn;
 }
