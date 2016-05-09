@@ -100,6 +100,7 @@ class WraprunFormula < Formula
     system_python "setup.py install --root=#{prefix} --prefix=''"
   end
 
+
   modulefile <<-MODULEFILE.strip_heredoc
     #%Module
     proc ModulesHelp { } {
@@ -128,7 +129,8 @@ class WraprunFormula < Formula
     setenv W_IGNORE_ABRT 1
     setenv W_SIG_DFL 1
 
-		<%= python_module_build_list @package, @builds %>
+		<%= pe_with_python_build_list @package, @builds %>
+
     set PREFIX <%= @package.version_directory %>/$BUILD
 
 		prepend-path PATH            $PREFIX/bin
@@ -151,4 +153,66 @@ class WraprunFormula < Formula
     setenv WRAPRUN_PRELOAD $libmpichf:$PREFIX/lib/libsplit.so
 
   MODULEFILE
+end
+
+Smithy::ModuleFile.class_eval do
+  def pe_with_python_build_list(package, builds, args={})
+    output = ""
+    Smithy::ModuleFile::compilers.each_with_index do |e,i|
+      versions = Hash.new do |cvs,cv|
+        cvs[cv] = Hash.new do |pvs,pv|
+          pvs[pv] = Array.new
+        end
+      end
+
+      comp_builds = builds.select{|b| b =~ e[:build_name_regex]}
+      comp_builds.each do |b|
+        b =~ e[:build_name_regex]
+        cv = "#{$2}"
+        b =~ /(python)([0-9\.]*)/
+        pv = "#{$2}"
+        versions[cv][pv] << b if module_is_available?(get_python_version_from_build_name(b))
+      end
+
+      if i == 0
+        output << "if "
+      else
+        output << "} elseif "
+      end
+
+      output << "[ is-loaded #{e[:prg_env]} ] {\n"
+      versions.each_with_index do |(cv, ps), ci|
+        if ci == 0
+          output << "  if "
+        else
+          output << "  } elseif "
+        end
+        output << "[ is-loaded #{e[:compiler_name]}/#{cv} ] {\n"
+        ps.each_with_index do |(pv, bs), pi|
+          if pi == 0
+            output << "    if "
+          else
+            output << "    } elseif "
+          end
+          output << "[ is-loaded python/#{pv} ] {\n"
+          if bs.length > 1
+            output << "      puts stderr \"Warning: possible wraprun modulefile name collision.\"\n"
+            output << "      puts stderr \"Please notify the system administrator.\"\n"
+          end
+          bs.each_with_index do |b, bi|
+            output << "      set LIBDIR #{python_libdir(get_python_version_from_build_name(b))}\n"
+            output << "      set BUILD  #{b}\n"
+            if ((bi == bs.size - 1) and (pi == ps.size - 1))
+              output << "    }\n"
+            end
+          end
+          if pi == ps.size - 1
+            output << "  }\n"
+          end
+        end
+      end
+    end
+    output << "}"
+    return output
+  end
 end
