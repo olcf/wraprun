@@ -51,7 +51,7 @@ static MPI_Comm MPI_COMM_SPLIT = MPI_COMM_NULL;
 // Reads in rank line of WRAPRUN_FILE
 // space seperated values are parsed to set color, work_dir, and env_vars
 static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
-                                  char *env_vars) {
+                                  char *out_err_filename, char *env_vars) {
   // Get file name from environment variable
   const char *const file_name = getenv("WRAPRUN_FILE");
   if(!file_name)
@@ -73,7 +73,7 @@ static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
   }
 
   // Extract parameters
-  const int num_params = sscanf(line, "%d %s %s", color, work_dir, env_vars);
+  const int num_params = sscanf(line, "%d %s %s %s", color, work_dir, out_err_filename, env_vars);
   if(num_params == EOF)
     EXIT_PRINT("Error parsing file line\n");
 
@@ -117,18 +117,12 @@ static void SetEnvironmentVaribles(char *env_vars) {
 }
 
 // Redirect stdout and stderr to file based upon color
-static void SetStdOutErr(const int color) {
-  const char *const job_id = getenv("PBS_JOBID");
-  const char *const app_id = getenv("ALPS_APP_ID");
-  char file_name[1024];
-
-  sprintf(file_name, "%s_%s_w_%d.out", job_id, app_id, color);
-  const FILE *const out_handle = freopen(file_name, "a", stdout);
+static void SetStdOutErr(const char *out_err_filename) {
+  const FILE *const out_handle = freopen(out_err_filename, "a", stdout);
   if(!out_handle)
     EXIT_PRINT("Error setting stdout!\n");
 
-  sprintf(file_name, "%s_%s_w_%d.err", job_id, app_id, color);
-  const FILE *const err_handle = freopen(file_name, "a", stderr);
+  const FILE *const err_handle = freopen(out_err_filename, "a", stderr);
   if(!err_handle)
     EXIT_PRINT("Error setting stderr\n");
 }
