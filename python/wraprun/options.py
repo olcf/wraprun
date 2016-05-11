@@ -29,8 +29,10 @@ Classes provided include:
 
 
 import argparse
-from .parseractions import ArgAction, FlagAction, PesAction, PathAction
+from .parseractions import (ArgAction, FlagAction, PesAction, PathAction,
+                            OEAction)
 from .arguments import Argument, ArgumentList
+from .instance import JOB_ID, INSTANCE_ID
 
 
 class OptionsBase(object):
@@ -56,6 +58,7 @@ class OptionsBase(object):
         self.aprun = aprun
 
         self._coloring = None
+        self._needs_unique_value = None
 
     def __repr__(self):
         return "{0}(wraprun={1}, aprun={2})".format(
@@ -87,6 +90,16 @@ class OptionsBase(object):
                 [k for k in self.wraprun.splits] +
                 [k for k in self.aprun.splits])
         return self._coloring
+
+    def needs_unique_value(self):
+        """Return a list of instance arguments that can split a task group's MPI
+        communicator into different colors but requires unique default values.
+        """
+        if self._needs_unique_value is None:
+            self._needs_unique_value = (
+                [k for k in self.wraprun.uniques] +
+                [k for k in self.aprun.uniques])
+        return self._needs_unique_value
 
     def wraprun_args(self, namespace):
         """Return a dictionary of wraprun arguments explicitly defined in an
@@ -185,6 +198,19 @@ class GroupOptions(OptionsBase):
                     'default': ['./'],
                     'action': PathAction,
                     'help': 'Task working directory',
+                    },
+                ),
+            Argument(
+                name='oe',
+                flags=['--w-oe'],
+                split=True,
+                unique=True,
+                parser={
+                    'metavar': "fname[,fname...]",
+                    'default': ['{job}_{instance}_w'.format(
+                        job=JOB_ID, instance=INSTANCE_ID)],
+                    'action': OEAction,
+                    'help': 'STDOUT/STDERR file basename',
                     },
                 ),
             )

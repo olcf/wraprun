@@ -147,6 +147,7 @@ class Wraprun(object):
 
         kwargs [kwarg (type): Description]:
            cd (str or [str,...]): Task working directory
+           oe (str or [str,...]): Task stdout/stderr file basename
            pes (int or [int,..]): Number of processing elements (PEs). REQUIRED
            arch (int): Host architecture
            cpu_list (int): CPU list

@@ -9,6 +9,7 @@ The task module provides the following classes:
 
 from collections import OrderedDict
 from .options import GROUP_OPTIONS
+from .instance import JOB_ID, INSTANCE_ID
 
 
 class Rank(object):
@@ -20,6 +21,7 @@ class Rank(object):
     FILE_CONTENT = (
         'color',
         'path',
+        'fname',
         )
 
     FILE_FORMAT = ' '.join(('{{{0}}}'.format(k) for k in FILE_CONTENT))
@@ -30,6 +32,8 @@ class Rank(object):
         self._data = {
             'color': color,
             'path': './',
+            'fname': '{job}_{instance}_w_{color}'.format(
+                job=JOB_ID, instance=INSTANCE_ID, color=color),
             }
         self._data.update(kwargs)
 
@@ -116,7 +120,11 @@ class TaskGroup(object):
             if value is not None and len(value) != number_of_splits:
                 # Len should be 1 and type should be tuple or list: be sure to
                 # provide a default when adding new splitting options.
-                self.args[k] = value * number_of_splits
+                if k in GROUP_OPTIONS.needs_unique_value():
+                    self.args[k] = ["{0}_{1}".format(value[0], i)
+                                    for i in range(number_of_splits)]
+                else:
+                    self.args[k] = value * number_of_splits
 
     def last_rank_and_color(self):
         """Return a dictionary of the highest rank and color indexes in this
@@ -140,7 +148,9 @@ class TaskGroup(object):
             if pes_count is None:
                 raise TaskError('Invalid PES')
             for _ in range(pes_count):
-                rank = Rank(rank_id, color, path=self.args['cd'][i])
+                rank = Rank(rank_id, color,
+                            path=self.args['cd'][i],
+                            fname=self.args['oe'][i])
                 ranks.append(rank)
                 rank_id += 1
         self._ranks = ranks

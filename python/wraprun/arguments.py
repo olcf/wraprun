@@ -41,6 +41,7 @@ class Argument(object):
         self.name = name
         self.flags = kwargs.pop('flags', None)
         self.split = kwargs.pop('split', False)
+        self.defaults = kwargs.pop('defaults', False)
         self.parser = kwargs.pop('parser')
         self._formatter = kwargs.pop('formatter', None)
 
@@ -109,6 +110,11 @@ class ArgumentList(object):
     def splits(self):
         """Return a list of arguments that can split MPI comm colors."""
         return [k for k in self._args if self._args[k].split]
+
+    @property
+    def uniques(self):
+        """Return a list of arguments that require color-unique values."""
+        return [k for k in self._args if self._args[k].unique]
 
     def __iter__(self):
         """Iterates through arguments in order added."""

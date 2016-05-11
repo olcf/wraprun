@@ -86,3 +86,22 @@ class PathAction(ArgAction):
         '''Used by Argparse to process arguments.'''
         paths_by_color = [i for i in values.split(',')]
         setattr(namespace, self.dest, paths_by_color)
+
+
+class OEAction(ArgAction):
+    '''Argparse action to process MPMD group CWD '--w-oe' arguments.
+
+    Looks for rank colorsplitting as comma-separated filename lists of the form
+      --w-oe fname1[,fname2...]'
+    where the paths cannot contain ','.
+    '''
+    def __init__(self, *args, **kwargs):
+        '''Create arparse.Action for processing group OE argument.'''
+        super(OEAction, self).__init__(*args, **kwargs)
+        self.split = True
+        self.is_aprun_arg = False
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        '''Used by Argparse to process arguments.'''
+        oe_filenames_by_color = [i for i in values.split(',')]
+        setattr(namespace, self.dest, oe_filenames_by_color)
