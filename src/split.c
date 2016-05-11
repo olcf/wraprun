@@ -192,6 +192,9 @@ static void SplitInit() {
   char *const work_dir = calloc(2048, sizeof(char));
   if(!work_dir)
     EXIT_PRINT("Error allocating work_dir memory!\n");
+  char *const out_err_filename = calloc(2048, sizeof(char));
+  if(!out_err_filename)
+    EXIT_PRINT("Error allocating out_err_filename memory!\n");
   char *const env_vars = calloc(4096, sizeof(char));
   if(!env_vars)
     EXIT_PRINT("Error allocating env_vars memory!\n");
@@ -199,10 +202,10 @@ static void SplitInit() {
 
   if(getenv("W_RANK_FROM_ENV")) {
     int env_rank = atoi(getenv("W_ENV_RANK"));
-    GetRankParamsFromFile(env_rank, &color, work_dir, env_vars);
+    GetRankParamsFromFile(env_rank, &color, work_dir, out_err_filename, env_vars);
   }
   else
-    GetRankParamsFromFile(rank, &color, work_dir, env_vars);
+    GetRankParamsFromFile(rank, &color, work_dir, out_err_filename, env_vars);
 
   if (getenv("W_IGNORE_SEGV")) {
     sighandler_t err_sig;
@@ -239,11 +242,12 @@ static void SplitInit() {
   SetWorkingDirectory(work_dir);
 
   if (getenv("W_REDIRECT_OUTERR"))
-    SetStdOutErr(color);
+    SetStdOutErr(out_err_filename);
 
   SetEnvironmentVaribles(env_vars);
 
   free(work_dir);
+  free(out_err_filename);
   free(env_vars);
 }
 
