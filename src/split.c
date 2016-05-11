@@ -48,8 +48,6 @@ THE SOFTWARE.
 
 static MPI_Comm MPI_COMM_SPLIT = MPI_COMM_NULL;
 
-static uint64_t BCAST_COUNT = 0;
-
 // Reads in rank line of WRAPRUN_FILE
 // space seperated values are parsed to set color, work_dir, and env_vars
 static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
@@ -554,27 +552,11 @@ int MPI_Barrier(MPI_Comm comm) {
 }
 
 int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm comm) {
-  int r,s;
-  MPI_Comm_rank(comm, &r);
-  MPI_Comm_size(comm, &s);
+  DEBUG_PRINT("Wrapped!\n");
 
   MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  MPI_Barrier(correct_comm);
-
-  DEBUG_PRINT("rank %d of %d starting bcast %d count: %d , datatype: %d , root: %d , passed_comm: %#010x \n", r, s, BCAST_COUNT, count, datatype, root, comm);
-  BCAST_COUNT++;
-
-  MPI_Comm correct_comm = GetCorrectComm(comm);
-
-  int rtrn = PMPI_Bcast(buffer, count, datatype, root, correct_comm);
-
-  MPI_Barrier(correct_comm);
-
-  DEBUG_PRINT("rank %d of %d finished bcast %d count: %d , datatype: %d , root: %d , passed_comm: %#010x \n", r, s, BCAST_COUNT, count, datatype, root, comm);
-
-
-  return rtrn;
+  return PMPI_Bcast(buffer, count, datatype, root, correct_comm);
 }
 
 int MPI_Gather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
