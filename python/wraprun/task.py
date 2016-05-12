@@ -70,6 +70,7 @@ class TaskGroup(object):
         format values.
         """
         self._ranks = []
+        self._first_color = first_color
         self.args = OrderedDict.fromkeys(
             GROUP_OPTIONS.wraprun.names +
             GROUP_OPTIONS.aprun.names)
@@ -115,16 +116,27 @@ class TaskGroup(object):
             raise TaskError(
                 'Inconsistent split lengths {0}'.format(splits))
         number_of_splits = max(splits) if splits else 1
+        for k in GROUP_OPTIONS.needs_unique_value():
+            value = self.args[k]
+            default = GROUP_OPTIONS.get(k).default
+            if value == default:
+                # Len should be 1 and type should be tuple or list: be sure to
+                # provide a default when adding new splitting options.
+                self.args[k] = ["{0}.{1}".format(value[0],
+                                                 self._first_color + i)
+                                for i in range(number_of_splits)]
+            elif len(value) != number_of_splits:
+                # Len should be 1 and type should be tuple or list: be sure to
+                # provide a default when adding new splitting options.
+                self.args[k] = ["{0}_w{1}".format(value[0], i)
+                                for i in range(number_of_splits)]
+
         for k in GROUP_OPTIONS.coloring():
             value = self.args[k]
             if value is not None and len(value) != number_of_splits:
                 # Len should be 1 and type should be tuple or list: be sure to
                 # provide a default when adding new splitting options.
-                if k in GROUP_OPTIONS.needs_unique_value():
-                    self.args[k] = ["{0}_{1}".format(value[0], i)
-                                    for i in range(number_of_splits)]
-                else:
-                    self.args[k] = value * number_of_splits
+                self.args[k] = value * number_of_splits
 
     def last_rank_and_color(self):
         """Return a dictionary of the highest rank and color indexes in this

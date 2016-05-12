@@ -29,6 +29,7 @@ Classes provided include:
 
 
 import argparse
+from os import environ as os_env
 from .parseractions import (ArgAction, FlagAction, PesAction, PathAction,
                             OEAction)
 from .arguments import Argument, ArgumentList
@@ -97,8 +98,8 @@ class OptionsBase(object):
         """
         if self._needs_unique_value is None:
             self._needs_unique_value = (
-                [k for k in self.wraprun.uniques] +
-                [k for k in self.aprun.uniques])
+                [k for k in self.wraprun.needs_unique] +
+                [k for k in self.aprun.needs_unique])
         return self._needs_unique_value
 
     def wraprun_args(self, namespace):
@@ -207,8 +208,10 @@ class GroupOptions(OptionsBase):
                 unique=True,
                 parser={
                     'metavar': "fname[,fname...]",
-                    'default': ['{job}_{instance}_w'.format(
-                        job=JOB_ID, instance=INSTANCE_ID)],
+                    'default': ['{name}.{job}_w{instance}'.format(
+                        name=os_env.get('PBS_JOBNAME', 'unnamed'),
+                        job=JOB_ID,
+                        instance=INSTANCE_ID)],
                     'action': OEAction,
                     'help': 'STDOUT/STDERR file basename',
                     },

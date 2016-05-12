@@ -41,7 +41,7 @@ class Argument(object):
         self.name = name
         self.flags = kwargs.pop('flags', None)
         self.split = kwargs.pop('split', False)
-        self.defaults = kwargs.pop('defaults', False)
+        self.unique = kwargs.pop('unique', False)
         self.parser = kwargs.pop('parser')
         self._formatter = kwargs.pop('formatter', None)
 
@@ -112,7 +112,7 @@ class ArgumentList(object):
         return [k for k in self._args if self._args[k].split]
 
     @property
-    def uniques(self):
+    def needs_unique(self):
         """Return a list of arguments that require color-unique values."""
         return [k for k in self._args if self._args[k].unique]
 
