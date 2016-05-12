@@ -120,12 +120,12 @@ static void SetEnvironmentVaribles(char *env_vars) {
 static void SetStdOutErr(const char *out_err_filename) {
   char filename[2048];
 
-  sprintf(file_name, "%s.out", out_err_filename);
+  sprintf(filename, "%s.out", out_err_filename);
   const FILE *const out_handle = freopen(filename, "a", stdout);
   if(!out_handle)
     EXIT_PRINT("Error setting stdout!\n");
 
-  sprintf(file_name, "%s.err", out_err_filename);
+  sprintf(filename, "%s.err", out_err_filename);
   const FILE *const err_handle = freopen(filename, "a", stderr);
   if(!err_handle)
     EXIT_PRINT("Error setting stderr\n");
