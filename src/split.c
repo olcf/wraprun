@@ -312,8 +312,7 @@ int MPI_Finalize() {
     }
   }
 
-  if (getenv("W_CLOSE_REDIRECT_OUTERR"))
-    CloseStdOutErr();
+  CloseStdOutErr();
 
   return return_value;
 }
