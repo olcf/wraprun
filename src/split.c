@@ -118,11 +118,15 @@ static void SetEnvironmentVaribles(char *env_vars) {
 
 // Redirect stdout and stderr to file based upon color
 static void SetStdOutErr(const char *out_err_filename) {
-  const FILE *const out_handle = freopen(out_err_filename, "a", stdout);
+  char filename[2048];
+
+  sprintf(file_name, "%s.out", out_err_filename);
+  const FILE *const out_handle = freopen(filename, "a", stdout);
   if(!out_handle)
     EXIT_PRINT("Error setting stdout!\n");
 
-  const FILE *const err_handle = freopen(out_err_filename, "a", stderr);
+  sprintf(file_name, "%s.err", out_err_filename);
+  const FILE *const err_handle = freopen(filename, "a", stderr);
   if(!err_handle)
     EXIT_PRINT("Error setting stderr\n");
 }
