@@ -1,6 +1,6 @@
 class WraprunFormula < Formula
   homepage "https://github.com/olcf/wraprun"
-  url "https://github.com/olcf/wraprun/archive/v0.2.2.tar.gz"
+  url "https://github.com/olcf/wraprun/archive/v0.2.3.tar.gz"
 
   supported_build_names /python2.7/, /python3/
 
