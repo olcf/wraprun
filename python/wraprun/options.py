@@ -207,13 +207,13 @@ class GroupOptions(OptionsBase):
                 split=True,
                 unique=True,
                 parser={
-                    'metavar': "fname[,fname...]",
+                    'metavar': "oef[,oef...]",
                     'default': ['{name}.{job}_w{instance}'.format(
                         name=os_env.get('PBS_JOBNAME', 'unnamed'),
                         job=JOB_ID,
                         instance=INSTANCE_ID)],
                     'action': OEAction,
-                    'help': 'STDOUT/STDERR file basename',
+                    'help': 'Task stdout/stderr file basename',
                     },
                 ),
             )

@@ -48,14 +48,74 @@ For non MPI executables a wrapper application, `serial`, is provided. This wrapp
 ```
 $ wraprun -n 1 serial ./foo.out -foo_args : ...
 ```
+### Standard output/error Redirection
 
-The `stdout/err` for each task is directed to it's own unique file in the
-current working directory. In early releases, this effect was accomplished
-with the `--w-roe` flag. However, manually specifying this flag has not been
-required since v0.1.11. 
+The `stdout/stderr` streams for each task are directed to a unique file. By
+default, each task writes these streams to files in the task's own current
+working directory named:
+
 ```
-$ wraprun --w-roe -n 1 ./foo.out: ...
+${JOBNAME}.${JOBID}_w${INSTANCE}.${TASKID}.out
+${JOBNAME}.${JOBID}_w${INSTANCE}.${TASKID}.err
 ```
+
+where `JOBNAME` is the batch job name (value of `$PBS_JOBNAME` for instance),
+`JOBID` is the batch job number (or PID of parent shell if `$PBS_JOBID` is unavailable),
+`INSTANCE` is the unique wraprun invocation called within the parent shell, and
+`TASKID` is the task index among all bundled tasks. The instance index is
+required so that multiple concurrent wraprun invocations in a single batch job
+do not collide with each other. The task index is fixed in the order that tasks are
+passed to wraprun such that for the following invocation:
+```
+$ wraprun -n 1,2 ./foo.out : -n 3 ./bar.out
+```
+
+task '0' is the instance of `foo.out` having 1 PE; task '1' is the 2 PE split of
+`foo.out`, and task '2' is the instance of `bar.out`. 
+
+The default names can be overridden by supplying a basename path to the group flag `--w-oe`:
+
+```
+$ wraprun -n 1,2 --w-oe name_a ./a.out : \
+          -n 1,2 --w-oe name_b1,name_b2 ./b.out : \
+          -n 1   --w-oe name_c1,sub/name_c2 ./c.out : \
+          -n 1,1 ./d.out : \
+          -n 1   ./e.out
+```
+
+The names can be either relative or absolute paths to an `aprun`-writable
+location.  Relative names are taken from the task's CWD. Wraprun will not
+create missing directories. Wraprun will add `.out` and `.err` extensions to
+the given path for each stream. 
+
+When ambiguous names are provided as for `a.out` in the above example, wraprun
+will add `_w${SPLITID}` to the given path for each task split.  To avoid this, a
+specific filename can be given to each task as a comma-separated list for each
+group split.  The output of the above example would then be
+
+```
+.
+├── name_a_w0.err
+├── name_a_w0.out
+├── name_a_w1.err
+├── name_a_w1.out
+├── name_b1.err
+├── name_b1.out
+├── name_b2.err
+├── name_b2.out
+├── name_c1.err
+├── name_c1.out
+├── sub/
+│   ├── name_c2.err
+│   └── name_c2.out
+├── nameofbatchjob.123456._w0.6.err
+├── nameofbatchjob.123456._w0.6.out
+├── nameofbatchjob.123456._w0.7.err
+├── nameofbatchjob.123456._w0.7.out
+├── nameofbatchjob.123456._w0.8.err
+└── nameofbatchjob.123456._w0.8.out
+```
+
 
 ## Python API
 
@@ -93,6 +153,7 @@ group option.
 | Parameter                                      | CLI Flag | API keyword           | API format       |
 | ----------------------------------------------:|:--------:|:---------------------:|:---------------- |
 | Task working directory                         | --w-cd   | 'cd'                  | str or [str,...] |
+| Task stdout/stderr file basename               | --w-oe   | 'oe'                  | str or [str,...] |
 | Number of processing elements (PEs). REQUIRED  | -n       | 'pes'                 | int or [int,...] |
 | Host architecture                              | -a       | 'arch'                | str              |
 | CPU list                                       | -cc      | 'cpu_list'            | str              |
