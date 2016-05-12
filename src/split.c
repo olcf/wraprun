@@ -48,12 +48,10 @@ THE SOFTWARE.
 
 static MPI_Comm MPI_COMM_SPLIT = MPI_COMM_NULL;
 
-static uint64_t BCAST_COUNT = 0;
-
 // Reads in rank line of WRAPRUN_FILE
 // space seperated values are parsed to set color, work_dir, and env_vars
 static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
-                                  char *env_vars) {
+                                  char *out_err_filename, char *env_vars) {
   // Get file name from environment variable
   const char *const file_name = getenv("WRAPRUN_FILE");
   if(!file_name)
@@ -75,7 +73,7 @@ static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
   }
 
   // Extract parameters
-  const int num_params = sscanf(line, "%d %s %s", color, work_dir, env_vars);
+  const int num_params = sscanf(line, "%d %s %s %s", color, work_dir, out_err_filename, env_vars);
   if(num_params == EOF)
     EXIT_PRINT("Error parsing file line\n");
 
@@ -119,18 +117,12 @@ static void SetEnvironmentVaribles(char *env_vars) {
 }
 
 // Redirect stdout and stderr to file based upon color
-static void SetStdOutErr(const int color) {
-  const char *const job_id = getenv("PBS_JOBID");
-  const char *const app_id = getenv("ALPS_APP_ID");
-  char file_name[1024];
-
-  sprintf(file_name, "%s_%s_w_%d.out", job_id, app_id, color);
-  const FILE *const out_handle = freopen(file_name, "a", stdout);
+static void SetStdOutErr(const char *out_err_filename) {
+  const FILE *const out_handle = freopen(out_err_filename, "a", stdout);
   if(!out_handle)
     EXIT_PRINT("Error setting stdout!\n");
 
-  sprintf(file_name, "%s_%s_w_%d.err", job_id, app_id, color);
-  const FILE *const err_handle = freopen(file_name, "a", stderr);
+  const FILE *const err_handle = freopen(out_err_filename, "a", stderr);
   if(!err_handle)
     EXIT_PRINT("Error setting stderr\n");
 }
@@ -200,6 +192,9 @@ static void SplitInit() {
   char *const work_dir = calloc(2048, sizeof(char));
   if(!work_dir)
     EXIT_PRINT("Error allocating work_dir memory!\n");
+  char *const out_err_filename = calloc(2048, sizeof(char));
+  if(!out_err_filename)
+    EXIT_PRINT("Error allocating out_err_filename memory!\n");
   char *const env_vars = calloc(4096, sizeof(char));
   if(!env_vars)
     EXIT_PRINT("Error allocating env_vars memory!\n");
@@ -207,10 +202,10 @@ static void SplitInit() {
 
   if(getenv("W_RANK_FROM_ENV")) {
     int env_rank = atoi(getenv("W_ENV_RANK"));
-    GetRankParamsFromFile(env_rank, &color, work_dir, env_vars);
+    GetRankParamsFromFile(env_rank, &color, work_dir, out_err_filename, env_vars);
   }
   else
-    GetRankParamsFromFile(rank, &color, work_dir, env_vars);
+    GetRankParamsFromFile(rank, &color, work_dir, out_err_filename, env_vars);
 
   if (getenv("W_IGNORE_SEGV")) {
     sighandler_t err_sig;
@@ -247,11 +242,12 @@ static void SplitInit() {
   SetWorkingDirectory(work_dir);
 
   if (getenv("W_REDIRECT_OUTERR"))
-    SetStdOutErr(color);
+    SetStdOutErr(out_err_filename);
 
   SetEnvironmentVaribles(env_vars);
 
   free(work_dir);
+  free(out_err_filename);
   free(env_vars);
 }
 
@@ -554,27 +550,11 @@ int MPI_Barrier(MPI_Comm comm) {
 }
 
 int MPI_Bcast(void *buffer, int count, MPI_Datatype datatype, int root, MPI_Comm comm) {
-  int r,s;
-  MPI_Comm_rank(comm, &r);
-  MPI_Comm_size(comm, &s);
+  DEBUG_PRINT("Wrapped!\n");
 
   MPI_Comm correct_comm = GetCorrectComm(comm);
 
-  MPI_Barrier(correct_comm);
-
-  DEBUG_PRINT("rank %d of %d starting bcast %d count: %d , datatype: %d , root: %d , passed_comm: %#010x \n", r, s, BCAST_COUNT, count, datatype, root, comm);
-  BCAST_COUNT++;
-
-  MPI_Comm correct_comm = GetCorrectComm(comm);
-
-  int rtrn = PMPI_Bcast(buffer, count, datatype, root, correct_comm);
-
-  MPI_Barrier(correct_comm);
-
-  DEBUG_PRINT("rank %d of %d finished bcast %d count: %d , datatype: %d , root: %d , passed_comm: %#010x \n", r, s, BCAST_COUNT, count, datatype, root, comm);
-
-
-  return rtrn;
+  return PMPI_Bcast(buffer, count, datatype, root, correct_comm);
 }
 
 int MPI_Gather(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
