@@ -1,0 +1,174 @@
+.TH WRAPRUN "1" "May 2016" "wraprun 0.2.3+" "User Commands"
+.SH NAME
+.B wraprun
+\- an ensemble task wrapper for aprun
+.SH SYNOPSIS
+.B wraprun
+[global options]... task [: task ]...
+.br
+.B wraprun
+-n pes[,...] [--w-cd path[,...]] [--w-oe path[,...]] [aprun options] [--] exe [exe
+options] [: task ]...
+.br
+.B wraprun
+[global options]... [task options]... [--] serial non-mpi-exe [exe options] [: task ]...
+.br
+.B wraprun
+--w-conf file
+.SH DESCRIPTION
+Wraps an arbitrary number of independent MPI and/or serial executables into an ensemble
+that runs under a single aprun call. MPI executables must be dynamically linked
+to run correctly under wraprun. However, serial applications can be run as-is
+when declared with the keyword 'serial'.
+.SH OPTIONS
+.PP
+.SS "Global Options"
+Global options may only occur once and must precede the first task spec.
+.PP
+.PD
+.TP 20
+\fB\-h\fR, \fB\-\-help\fR
+Show a help message summary and exit
+.TP
+\fB\-\-w\-conf\fR conf
+Specify the path to a YAML configuration file
+.TP
+\fB\-\-w\-debug\fR
+Print debugging information and exit
+.TP
+\fB\-\-w\-no\-ld\-pre\fR
+Do not set the LD_PRELOAD environment variable. For advanced users only.
+.TP
+\fB\-b\fR
+Do not copy executable to compute nodes
+.PD
+.PP
+.SS "Tasks"
+Each task spec must provide a number of PEs and an executable. The executable
+binary is not copied to the compute nodes and there must be stored on a
+filesystem mounted by the compute nodes. All Wraprun/Aprun options for the task
+must be given before the executable.  Ambiguous option errors can be avoided by
+inserting the pseudo\-argument \&'\-\-' prior to the executable string.
+.PP
+.PD
+.TP 20
+\fB\-n\fR pes[,pes...]
+Number of processing elements (PEs). REQUIRED
+.TP
+\fB\-\-w\-cd\fR path[,path...]
+Specify the task working directory.
+.TP
+\fB\-\-w\-oe\fR path[,path...]
+Task stdout/stderr file basename
+.TP
+\fB\-a\fR arch
+Host architecture
+.TP
+\fB\-cc\fR list
+CPU list
+.TP
+\fB\-cp\fR file
+CPU placement file
+.TP
+\fB\-d\fR depth
+Process affinity depth
+.TP
+\fB\-j\fR cpupcu
+CPUs per CU
+.TP
+\fB\-L\fR nodes
+Node list
+.TP
+\fB\-N\fR ppn
+PEs per node
+.TP
+\fB\-S\fR ppnn
+PEs per NUMA node
+.TP
+\fB\-sl\fR list
+NUMA node list
+.TP
+\fB\-sn\fR nnpn
+Number of NUMA nodes per node
+.TP
+\fB\-ss\fR
+Use strict memory containment
+.TP
+exe [...]
+Executable and argument string. REQUIRED
+.PD
+.PP
+.SS "Additional Tasks"
+Additional tasks can be added where each 
+.B task group
+is separated by " : " using aprun MPMD\-mode syntax.
+.PP
+.SH "TASK SPLITTING"
+.PP
+Flags which accept a comma-separated set of optional additional values will split
+a task spec into further task groups. For instance, to launch three independent
+instances of the executable 'foo' with 3, 6 and 9 MPI ranks respectively and one
+instance of the executable 'bar' with 5 ranks in the same call, one can enter:
+.in +4n
+.nf
+
+wraprun -n 3,6,9 foo : -n 5 bar
+
+.fi
+.in
+When multiple 'splittable' options are given in the same task spec, each must
+have either a single value used for each spilt or fully agree on the number of
+splits. For example, the following invocation will launch 3 groups of 'foo' each
+with a unique working directory and 5 PEs (15 total):
+.in +4n
+.nf
+
+wraprun -n 5 --w-cd ./a,./b,./c foo
+
+.fi
+.in
+however, to give the group with working directory './b' an additional rank, it is
+necessary to explicitly pass the number of PEs given to each split:
+.in +4n
+.nf
+
+wraprun -n 5,6,5 --w-cd ./a,./b,./c foo
+
+.fi
+.in
+.SH REPORTING BUGS
+Report bugs and feature requests to the wraprun issue tracker at:
+<https://github.com/olcf/wraprun/issues>
+.SH AUTHORS
+Wraprun is written and maintained by Adam Simpson and Matt Belhorn
+at the Oak Ridge Leadership Computing Facility, Oak Ridge National Laboratory.
+.SH COPYRIGHT
+The MIT License (MIT)
+.br
+.if n Copyright (c) 2016 A. Simpson, M. Belhorn
+.if t Copyright \(co 2016 A. Simpson, M. Belhorn
+.PP
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+.PP
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+.PP
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+.SH "SEE ALSO"
+aprun(1)
+.PP
+.br
+Further documentation available at: <https://github.com/olfc/wraprun>
+.br
+and at the OLCF support page for wraprun: <https://www.olcf.ornl.gov/kb_articles/wraprun/>
