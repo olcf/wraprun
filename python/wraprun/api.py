@@ -97,7 +97,7 @@ class Wraprun(object):
                         argv[first_group_marker + 1:]).split(':'):
                     if string != '':
                         self.add_task(string=string)
-        elif kwargs and not argv:
+        elif not argv:
             self._load_conf(kwargs)
         else:
             raise WraprunError("Use either CLI or API, not both.")
