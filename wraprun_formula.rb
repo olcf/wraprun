@@ -136,6 +136,7 @@ class WraprunFormula < Formula
 		prepend-path PATH            $PREFIX/bin
 		prepend-path LD_LIBRARY_PATH $PREFIX/lib
 		prepend-path PYTHONPATH      $PREFIX/lib/$LIBDIR/site-packages
+		prepend-path MANPATH         $PREFIX/share/man/man1
 
     # The libfmpich library is suffixed with the PE name, so we must extract it
     set compiler $env(PE_ENV)
