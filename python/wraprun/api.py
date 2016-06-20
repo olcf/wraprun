@@ -143,7 +143,7 @@ class Wraprun(object):
 
         EXAMPLES:
            add_task('-n 1,2,3 --w-cd ./a,./b,./c ./exe exe_arg')
-           add_task(pes=[1,2,3], cd=['./a','./b','./c'] ,exe='./exe exe_arg')
+           add_task(pes=[1,2,3], cd=['./a','./b','./c'], exe='./exe exe_arg')
 
         kwargs [kwarg (type): Description]:
            cd (str or [str,...]): Task working directory
@@ -165,6 +165,8 @@ class Wraprun(object):
         kwargs.update(
             {"first_" + k: v for k, v in self._rank_and_color.items()})
         self._parser.update(kwargs, string)
+        if hasattr(kwargs['exe'], 'split'):
+            kwargs['exe'] = kwargs['exe'].split()
         task_group = TaskGroup(**kwargs)
         self._rank_and_color = {
             k: v + 1 for k, v in task_group.last_rank_and_color().items()}

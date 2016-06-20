@@ -3,3 +3,4 @@ build
 *.OU
 *.o[0-9]*
 *.pyc
+*.dat
