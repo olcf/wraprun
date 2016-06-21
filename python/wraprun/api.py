@@ -171,6 +171,10 @@ class Wraprun(object):
         self._rank_and_color = {
             k: v + 1 for k, v in task_group.last_rank_and_color().items()}
         self._task_groups.append(task_group)
+        if len(self._task_groups) > 2048:
+            raise WraprunError(
+                'Too many task groups (> 2048) in bundle: '
+                'Aborting to protect ALPS stability.')
         self._update_file(task_group)
 
     def _debug_mode(self):

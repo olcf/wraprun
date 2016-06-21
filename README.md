@@ -1,8 +1,10 @@
 # wraprun
-`wraprun` is a utility that enables independent execution of multiple MPI applications under a single `aprun` call.
+`wraprun` is a utility that enables independent execution of multiple MPI
+applications under a single `aprun` call.
 
 ## To install:
-`wraprun` includes a Smithy formula to automate deployment, for centers not using Smithy the build looks as follow:
+`wraprun` includes a Smithy formula to automate deployment, for centers not
+using Smithy the build looks as follow:
 
 ```
 $ mkdir build
@@ -10,25 +12,36 @@ $ cmake -DCMAKE_INSTALL_PREFIX=/path/to/install ..
 $ make
 $ make install
 ```
-Inside of `/path/to/install` a `bin` directory will be created containing the `wraprun` scripts and a `lib` directory will be created containing `libsplit.so`. The `WRAPRUN_PRELOAD` environment variable must be correctly set to point to `libsplit.so` and in the case of fortran applications `libfmpich.so` at runtime.
-e.g. `WRAPRUN_PRELOAD=/path/to/install/lib/libsplit.so:/path/to/mpi_install/lib/libfmpich.so`
+Inside of `/path/to/install` a `bin` directory will be created containing the
+`wraprun` scripts and a `lib` directory will be created containing
+`libsplit.so`. The `WRAPRUN_PRELOAD` environment variable must be correctly set
+to point to `libsplit.so` and in the case of fortran applications
+`libfmpich.so` at runtime.  e.g.
+`WRAPRUN_PRELOAD=/path/to/install/lib/libsplit.so:/path/to/mpi_install/lib/libfmpich.so`
 
-On some systems libfmpich has a programming environment specific suffix that must be taken into account:
-e.g. `WRAPRUN_PRELOAD=/path/to/install/lib/libsplit.so:/path/to/mpi_install/lib/libfmpich_pgi.so`
+On some systems libfmpich has a programming environment specific suffix that
+must be taken into account: e.g.
+`WRAPRUN_PRELOAD=/path/to/install/lib/libsplit.so:/path/to/mpi_install/lib/libfmpich_pgi.so`
 
 ## To run:
-Assuming that the module file created by the Smithy formula is used, or a similar one created, basic running looks like the following examples.
+Assuming that the module file created by the Smithy formula is used, or a
+similar one created, basic running looks like the following examples.
 
 ```
 $ module load python wraprun
 $ wraprun -n 80 ./foo.out : -n 160 ./bar.out ...
 ```
+A maximum of 2048 separate `:` separated task groups is enforced to protect
+ALPS stability.
 
-In addition to the standard process placement flags available to aprun the `--w-cd` flag can be set to change the current working directory for each executable:
+In addition to the standard process placement flags available to aprun the
+`--w-cd` flag can be set to change the current working directory for each
+executable:
 ```
 $ wraprun -n 80 --w-cd /foo/dir ./foo.out : -n 160 --w-cd /bar/dir ./bar.out ...
 ```
-This is particularly useful for legacy Fortran applications that use hard coded input and output file names.
+This is particularly useful for legacy Fortran applications that use hard coded
+input and output file names.
 
 Multiple instances of an application can be placed on a node using
 comma-separated PES syntax `PES1,PES2,...,PESN` syntax, for instance:
@@ -37,14 +50,18 @@ $ wraprun -n 2,2,2 ./foo.out : ...
 ```
 would launch 3 two-process instances of foo.out on a single node. 
 
-In this case the number of allocated nodes must be at least equal to the sum of processes in the comma-separated list of processing elements divided by the maximum number of processes per node.
+In this case the number of allocated nodes must be at least equal to the sum of
+processes in the comma-separated list of processing elements divided by the
+maximum number of processes per node.
 
 This may also be combined with the `--w-cd` flag :
 ```
 $ wraprun -n 2,2,2 --w-cd /foo/dir1,/foo/dir2,/foo/dir3 ./foo.out : ...
 ```
 
-For non MPI executables a wrapper application, `serial`, is provided. This wrapper ensures that all executables will run to completion before aprun exits. To use, place `serial` in front of your application and arguments:
+For non MPI executables a wrapper application, `serial`, is provided. This
+wrapper ensures that all executables will run to completion before aprun exits.
+To use, place `serial` in front of your application and arguments:
 ```
 $ wraprun -n 1 serial ./foo.out -foo_args : ...
 ```
@@ -60,12 +77,12 @@ ${JOBNAME}.${JOBID}_w${INSTANCE}.${TASKID}.err
 ```
 
 where `JOBNAME` is the batch job name (value of `$PBS_JOBNAME` for instance),
-`JOBID` is the batch job number (or PID of parent shell if `$PBS_JOBID` is unavailable),
-`INSTANCE` is the unique wraprun invocation called within the parent shell, and
-`TASKID` is the task index among all bundled tasks. The instance index is
-required so that multiple concurrent wraprun invocations in a single batch job
-do not collide with each other. The task index is fixed in the order that tasks are
-passed to wraprun such that for the following invocation:
+`JOBID` is the batch job number (or PID of parent shell if `$PBS_JOBID` is
+unavailable), `INSTANCE` is the unique wraprun invocation called within the
+parent shell, and `TASKID` is the task index among all bundled tasks. The
+instance index is required so that multiple concurrent wraprun invocations in a
+single batch job do not collide with each other. The task index is fixed in the
+order that tasks are passed to wraprun such that for the following invocation:
 ```
 $ wraprun -n 1,2 ./foo.out : -n 3 ./bar.out
 ```
@@ -73,7 +90,8 @@ $ wraprun -n 1,2 ./foo.out : -n 3 ./bar.out
 task '0' is the instance of `foo.out` having 1 PE; task '1' is the 2 PE split of
 `foo.out`, and task '2' is the instance of `bar.out`. 
 
-The default names can be overridden by supplying a basename path to the group flag `--w-oe`:
+The default names can be overridden by supplying a basename path to the group
+flag `--w-oe`:
 
 ```
 $ wraprun -n 1,2 --w-oe name_a ./a.out : \
@@ -188,7 +206,9 @@ See the testing/example_config.yaml file for format information.
 
 
 ## Disclaimer
-`wraprun` works by intercepting <i>all</i> MPI function calls that contain an `MPI_Comm` argument. If an application calls an MPI function, containing an `MPI_Comm` argument, not included in `src/split.c` the results are undefined.
+`wraprun` works by intercepting <i>all</i> MPI function calls that contain an
+`MPI_Comm` argument. If an application calls an MPI function, containing an
+`MPI_Comm` argument, not included in `src/split.c` the results are undefined.
 
 If any executable is not dynamically linked the results are undefined.
 

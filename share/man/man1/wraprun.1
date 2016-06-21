@@ -1,4 +1,4 @@
-.TH WRAPRUN "1" "May 2016" "wraprun 0.2.3+" "User Commands"
+.TH WRAPRUN "1" "Aug 2016" "wraprun 0.2.4+" "User Commands"
 .SH NAME
 .B wraprun
 \- an ensemble task wrapper for aprun
@@ -16,10 +16,10 @@ options] [: task ]...
 .B wraprun
 --w-conf file
 .SH DESCRIPTION
-Wraps an arbitrary number of independent MPI and/or serial executables into an ensemble
-that runs under a single aprun call. MPI executables must be dynamically linked
-to run correctly under wraprun. However, serial applications can be run as-is
-when declared with the keyword 'serial'.
+Wraps independent MPI and/or serial executables into an ensemble that runs under
+a single aprun call. A maximum of 2048 separate executables may be bundled. MPI
+executables must be dynamically linked to run correctly under wraprun. However,
+serial applications can be run as-is when declared with the keyword 'serial'.
 .SH OPTIONS
 .PP
 .SS "Global Options"
