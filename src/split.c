@@ -80,7 +80,7 @@ static void GetRankParamsFromFile(const int rank, int *color, char *work_dir,
   if(getenv("APPEND_APID_STDIO")) {
     char *filename = NULL;
     int length = asprintf(&filename, "%s", out_err_filename);
-    length |= asprintf(out_err_filename, "%s_%s", filename, getenv("ALPS_APP_ID"));
+    length |= sprintf(out_err_filename, "%s_%s", filename, getenv("ALPS_APP_ID"));
     free(filename);
     if(length < 0) {
       EXIT_PRINT("Error appending apid to stdio files\n");
