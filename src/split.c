@@ -100,7 +100,7 @@ static void SetSplitCommunicator(const int color) {
 static void SetWorkingDirectory(const char *const work_dir) {
   const int err = chdir(work_dir);
   if(err)
-    EXIT_PRINT("Failed to change working directory: %s!\n", strerror(errno));
+    EXIT_PRINT("Failed to change working directory to %s: %s!\n", work_dir, strerror(errno));
 }
 
 // Set environment variables in env_vars string
@@ -119,7 +119,7 @@ static void SetEnvironmentVaribles(char *env_vars) {
     if(num_components == 2) {
       const int err = setenv(key, value, 1);
       if(err)
-        EXIT_PRINT("Error setting environment variable: %s\n", strerror(errno));
+        EXIT_PRINT("Error setting environment variable %s: %s\n", key, strerror(errno));
     }
     else
       EXIT_PRINT("Error parsing environment_variables\n");
