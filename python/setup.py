@@ -8,7 +8,7 @@ from setuptools import setup, find_packages
 if __name__ == '__main__':
 
     setup(name='Wraprun',
-          version='0.2.1',
+          version='0.2.6',
           description='Flexible Aprun task bundler',
           author='Matt Belhorn',
           author_email='belhornmp@ornl.gov',

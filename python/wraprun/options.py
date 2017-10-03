@@ -31,7 +31,7 @@ Classes provided include:
 import argparse
 from os import environ as os_env
 from .parseractions import (ArgAction, FlagAction, PesAction, PathAction,
-                            OEAction)
+                            EnvAction, OEAction)
 from .arguments import Argument, ArgumentList
 from .instance import JOB_ID, INSTANCE_ID
 
@@ -216,6 +216,17 @@ class GroupOptions(OptionsBase):
                     'help': 'Task stdout/stderr file basename',
                     },
                 ),
+            Argument(
+                name='env',
+                flags=['--w-env'],
+                split=True,
+                parser={
+                    'metavar': "env[,env...]",
+                    'default': [''],
+                    'action': EnvAction,
+                    'help': 'Task environment variables',
+                    },
+                )
             )
 
         aprun = ArgumentList(

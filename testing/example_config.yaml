@@ -15,6 +15,10 @@ options:
 groups:
 - string: -n 2,4,6 --w-cd ./a,./b,./c -cc 2 -ss ./bin_a -cc
 - cd: [./a, ./b, ./c]    # String or inline series of strings
+  env:                   # String or inline series of strings
+    - key=value
+    - k1=v1;k2=v2
+    - ""    
   pes: [2, 4, 6]         # integer or inline series of integers
   arch:                  # 
   cpu_list: '2'          # integer

@@ -134,6 +134,34 @@ group split.  The output of the above example would then be
 └── nameofbatchjob.123456._w0.8.out
 ```
 
+### Per-task environment variables
+
+Additional environment variables can be set per task group using the `--w-env`
+flag. The syntax for passing environment variables is
+
+```
+--w-env "key1=value1;key2=value2"
+```
+
+to set variables `key1` and `key2` in the task's runtime environment. Multiple
+variable key=value pairs are separated by `;` which is interpereted by many
+shells as a command separator. It is therefore usually necessary to wrap the
+argument in `"` marks as appropriate. Additional sets of environment variables
+can be passed when separated by a `,` and will implicitly spawn off additional
+task groups:
+
+```
+--w-env "key1=value1;key2=value2,,key1=value3,key1=value4,,"
+```
+
+The above example will launch 5 groups. Groups that should not add any
+additional environment variables are denoted by an empty string between commas
+or a trailing comma for the last group. It is not necessary for each group to
+have the same number or keys of environment variables set.
+
+However, in all cases, the environment variable values cannot contain `;` nor
+`,` which are used by wraprun to parse the input.
+
 
 ## Python API
 
@@ -172,6 +200,7 @@ group option.
 | ----------------------------------------------:|:--------:|:---------------------:|:---------------- |
 | Task working directory                         | --w-cd   | 'cd'                  | str or [str,...] |
 | Task stdout/stderr file basename               | --w-oe   | 'oe'                  | str or [str,...] |
+| Per-task additional environment variables      | --w-env  | 'env'                 | str or [str,...] |
 | Number of processing elements (PEs). REQUIRED  | -n       | 'pes'                 | int or [int,...] |
 | Host architecture                              | -a       | 'arch'                | str              |
 | CPU list                                       | -cc      | 'cpu_list'            | str              |

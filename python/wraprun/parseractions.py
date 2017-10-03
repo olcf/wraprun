@@ -88,6 +88,33 @@ class PathAction(ArgAction):
         setattr(namespace, self.dest, paths_by_color)
 
 
+class EnvAction(ArgAction):
+    '''Argparse action to process MPMD group ENV '--w-env' arguments.
+
+    Looks for rank colorsplitting as comma-separated environment variable lists
+    of the form
+      --w-env key1a=val1a[;key1b=val1b...][,key2a=val2a[;key2b=val2b...]...]'
+    where environment variable values cannot contain either ';' or ','.
+    Semicolons ';' are used to separate envvar key-value pairs and commas ','
+    are used to separate colorsplitting groups.
+    '''
+    def __init__(self, *args, **kwargs):
+        '''Create arparse.Action for processing group ENV argument.'''
+        super(EnvAction, self).__init__(*args, **kwargs)
+        self.split = True
+        self.is_aprun_arg = False
+
+    def __call__(self, parser, namespace, values, option_string=None):
+        '''Used by Argparse to process arguments.'''
+        env_by_color = [i for i in values.split(',')]
+        try:
+            assert all('=' in i for i in env_by_color if i)
+        except AssertionError:
+            msg = "ERROR: Bad environment variable string '{0}' format!"
+            raise Exception(msg.format(values))
+        setattr(namespace, self.dest, env_by_color)
+
+
 class OEAction(ArgAction):
     '''Argparse action to process MPMD group CWD '--w-oe' arguments.
 

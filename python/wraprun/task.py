@@ -22,6 +22,7 @@ class Rank(object):
         'color',
         'path',
         'fname',
+        'env',
         )
 
     FILE_FORMAT = ' '.join(('{{{0}}}'.format(k) for k in FILE_CONTENT))
@@ -34,6 +35,7 @@ class Rank(object):
             'path': './',
             'fname': '{job}_{instance}_w_{color}'.format(
                 job=JOB_ID, instance=INSTANCE_ID, color=color),
+            'env': '',
             }
         self._data.update(kwargs)
 
@@ -162,7 +164,8 @@ class TaskGroup(object):
             for _ in range(pes_count):
                 rank = Rank(rank_id, color,
                             path=self.args['cd'][i],
-                            fname=self.args['oe'][i])
+                            fname=self.args['oe'][i],
+                            env=self.args['env'][i])
                 ranks.append(rank)
                 rank_id += 1
         self._ranks = ranks
