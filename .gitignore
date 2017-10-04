@@ -4,3 +4,5 @@ build
 *.o[0-9]*
 *.pyc
 *.dat
+*.bak
+*.egg-info

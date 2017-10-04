@@ -1,0 +1,28 @@
+#!/usr/bin/env python
+'''
+Wraprun package setup script.
+'''
+
+from setuptools import setup, find_packages
+
+if __name__ == '__main__':
+
+    setup(name='wraprun',
+          version='${WRAPRUN_VERSION}',
+          description='Flexible Aprun task bundler',
+          author='Matt Belhorn',
+          author_email='belhornmp@ornl.gov',
+          url='https://github.com/olcf/wraprun',
+          license="MIT",
+          package_dir={'':'${CMAKE_CURRENT_SOURCE_DIR}',
+                       'wraprun':'${CMAKE_CURRENT_SOURCE_DIR}/wraprun'},
+          packages=['wraprun'],
+          install_requires=['pyyaml>=3.1.0'],
+          entry_points={
+              'console_scripts': [
+                  'wraprun=wraprun:_cli_main'
+              ],
+         },
+         zip_safe=False,
+         )
+

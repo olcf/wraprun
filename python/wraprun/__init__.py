@@ -31,6 +31,17 @@ more tasks to be started per batch job. Wraprun works with both MPI-aware and
 serial executables.
 """
 
+import sys
 from .api import Wraprun
 
+
 __all__ = ["Wraprun"]
+
+
+def _cli_main():
+    """Main commandline interface entrypoint."""
+    bundle = Wraprun(argv=sys.argv)
+    bundle.launch()
+
+if __name__ == '__main__':
+    _cli_main()

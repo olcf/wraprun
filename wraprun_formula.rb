@@ -52,11 +52,9 @@ class WraprunFormula < Formula
         # normal build from here:
         system "rm -rf build; mkdir build"
 				Dir.chdir "build"
-        system "cmake -DCMAKE_INSTALL_PREFIX=#{prefix} .."
+        system "cmake -DCMAKE_INSTALL_PREFIX=#{prefix} -DDEVELOPMENT_BUILD=TRUE .."
         system "make"
         system "make install"
-				Dir.chdir "#{prefix}/source/python"
-				system_python "setup.py install --root=#{prefix} --prefix=''"
       end
     end
   end
@@ -96,8 +94,6 @@ class WraprunFormula < Formula
     system "cmake -DCMAKE_INSTALL_PREFIX=#{prefix} .."
     system "make"
     system "make install"
-    Dir.chdir "#{prefix}/source/python"
-    system_python "setup.py install --root=#{prefix} --prefix=''"
   end
 
 
