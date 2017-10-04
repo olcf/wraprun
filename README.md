@@ -154,13 +154,13 @@ task groups:
 --w-env "key1=value1;key2=value2,,key1=value3,key1=value4,,"
 ```
 
-The above example will launch 5 groups. Groups that should not add any
+The above example will launch 6 groups. Groups that should not add any
 additional environment variables are denoted by an empty string between commas
 or a trailing comma for the last group. It is not necessary for each group to
-have the same number or keys of environment variables set.
+have the same number or names of environment variables set.
 
-However, in all cases, the environment variable values cannot contain `;` nor
-`,` which are used by wraprun to parse the input.
+However, in all cases, the environment variable values cannot contain the
+symbols `;`, `,`, or `=` which are used by wraprun to parse the input.
 
 
 ## Python API

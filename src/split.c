@@ -115,14 +115,14 @@ static void SetEnvironmentVaribles(char *env_vars) {
   while ((token = strsep(&env_vars, ";")) != NULL) {
     char key[1024];
     char value[1024];
-    const int num_components = sscanf(token, "%s=%s", key, value);
+    const int num_components = sscanf(token, "%[^=]=%s", key, value);
     if(num_components == 2) {
       const int err = setenv(key, value, 1);
       if(err)
         EXIT_PRINT("Error setting environment variable %s: %s\n", key, strerror(errno));
     }
     else
-      EXIT_PRINT("Error parsing environment_variables\n");
+      EXIT_PRINT("Error parsing environment variables ('%s'='%s')\n", key, value);
   }
 }
 
