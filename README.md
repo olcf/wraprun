@@ -67,9 +67,10 @@ $ wraprun -n 1 serial ./foo.out -foo_args : ...
 ```
 ### Standard output/error Redirection
 
-The `stdout/stderr` streams for each task are directed to a unique file. By
-default, each task writes these streams to files in the task's own current
-working directory named:
+The `stdout/stderr` streams for each task are directed to a unique file for
+that task since it is generally undesirable for the standard output of all
+tasks to be merged into a single stream.  By default, each task writes their
+own streams to files in the task's own current working directory named:
 
 ```
 ${JOBNAME}.${JOBID}_w${INSTANCE}.${TASKID}.out
@@ -90,6 +91,7 @@ $ wraprun -n 1,2 ./foo.out : -n 3 ./bar.out
 task '0' is the instance of `foo.out` having 1 PE; task '1' is the 2 PE split of
 `foo.out`, and task '2' is the instance of `bar.out`. 
 
+In many cases, it is desirable to change the default standard output/error file names.
 The default names can be overridden by supplying a basename path to the group
 flag `--w-oe`:
 
@@ -134,6 +136,16 @@ group split.  The output of the above example would then be
 └── nameofbatchjob.123456._w0.8.out
 ```
 
+**WARNING:** Under no circumstances can standard shell redirection (`>`) be
+used to separate the stdout and stderr streams of individual task groups. In
+other words, the following is a shell syntax error and will not produce the
+desired outcome:
+
+```
+# This will fail - redirection operators in the middle of
+# a command incantation is a syntax error.
+wraprun -n 1 ./a.out > a.log : -n 1 ./b.out > b.log
+```
 
 ## Python API
 
@@ -148,9 +160,14 @@ python module into your script:
 import wraprun
 
 bundle = wraprun.Wraprun()
+# Add tasks by single strings as would be passed to the commandline interface between `:`'s.
 bundle.add_task('-n 2,4,6 --w-cd ./a,./b,./c -cc 2 -ss ./bin_a -cc')
 bundle.add_task('-n 3,5,7 ./bin_b input_b')
+
+# Add tasks by passing parameters as keyword arguments.
 bundle.add_task(pes=[1,2,3], pes_per_node=5, exe='./bin_c with args', cd=['./aa', './bb','./cc'])
+
+# Launch the job on the compute nodes (starts the `aprun` subprocess).
 bundle.launch()
 ```
 
@@ -188,6 +205,57 @@ group option.
 
 
 The `launch` method launches an aprun subprocess call for the added tasks.
+
+
+### API Examples
+
+Bundle five instances of the same program.
+
+```python
+from wraprun import Wraprun
+
+bundle = Wraprun()
+for _ in range(5):
+    bundle.add_task('-n 1 a.out')
+
+bundle.launch()
+```
+
+Loop over many similar input files organized in different directories, with customized stdout/stderr filenames for each task:
+
+```python
+from os import environ
+from wraprun import Wraprun
+
+dir_template = './run_{run_id}x{ranks:02}'
+log_template = 'run_{run_id}x{ranks:02}.log.{pbs_job}'.format(pbs_job=environ.get('PBS_JOBID', 'none'))
+ranks_list = [5, 10, 15]
+binary_path = '/ccs/proj/stf007/bin/my_executable'
+input_template = '{binary} data_{run_id}.dat'
+
+bundle = Wraprun()
+for run_id in range(5):
+    bundle.add_task(
+        pes=ranks_list,
+        pes_per_node=5,
+        cd=[dir_template.format(run_id=run_id, ranks=ranks) for ranks in ranks_list],
+        oe=[log_template.format(run_id=run_id, ranks=ranks) for ranks in ranks_list],
+        exe=input_template.format(binary=binary_path, run_id=run_id)
+        )
+bundle.launch()
+```
+
+This is equivalent to the following command line call, but is arguably easier
+to read and certainly easier to edit, maintain, and scale to larger numbers of
+runs.
+
+```sh
+wraprun -n 5,10,15 -N 5 --w-cd './run_0x05,./run_0x10,./run_0x15' --w-oe "run_0x05.log.${PBS_JOBID},run_0x10.log.${PBS_JOBID},run_0x15.log.${PBS_JOBID}" /ccs/proj/stf007/bin/my_executable data_0.dat : \
+        -n 5,10,15 -N 5 --w-cd './run_1x05,./run_1x10,./run_1x15' --w-oe "run_1x05.log.${PBS_JOBID},run_1x10.log.${PBS_JOBID},run_1x15.log.${PBS_JOBID}" /ccs/proj/stf007/bin/my_executable data_1.dat : \
+        -n 5,10,15 -N 5 --w-cd './run_2x05,./run_2x10,./run_2x15' --w-oe "run_2x05.log.${PBS_JOBID},run_2x10.log.${PBS_JOBID},run_2x15.log.${PBS_JOBID}" /ccs/proj/stf007/bin/my_executable data_2.dat : \
+        -n 5,10,15 -N 5 --w-cd './run_3x05,./run_3x10,./run_3x15' --w-oe "run_3x05.log.${PBS_JOBID},run_3x10.log.${PBS_JOBID},run_3x15.log.${PBS_JOBID}" /ccs/proj/stf007/bin/my_executable data_3.dat : \
+        -n 5,10,15 -N 5 --w-cd './run_4x05,./run_4x10,./run_4x15' --w-oe "run_4x05.log.${PBS_JOBID},run_4x10.log.${PBS_JOBID},run_4x15.log.${PBS_JOBID}" /ccs/proj/stf007/bin/my_executable data_4.dat
+```
 
 ## Configuration Files
 
