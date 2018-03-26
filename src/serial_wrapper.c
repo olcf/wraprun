@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
   pid_t child_pid = fork();
 
   if(child_pid == 0) { // Child process runs serial executable
-    int err = execv(argv[1], new_argv);
+    int err = execvp(argv[1], new_argv);
     if(err)
       EXIT_PRINT("Failed to launch executable: %s!\n", strerror(errno));
   }
